@@ -1,0 +1,17 @@
+{
+  "name": "hyperdns",
+  "version": "0.0.1",
+  "private": true,
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "test": "npx brittle test/brittle/*.js"
+  },
+  "dependencies": {
+    "corestore": "^7.0.0",
+    "hypercore-crypto": "^3.5.0"
+  },
+  "devDependencies": {
+    "brittle": "^3.0.0"
+  }
+}

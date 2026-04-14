@@ -1,0 +1,12 @@
+- Domain names are NOT globally unique
+- Multiple domain entities may represent the same name
+- Never rely on entity IDs for name resolution
+- Records must be linked via has_record
+- Records without content are invalid
+- Resolution must be deterministic
+- Resolution must NOT mix multiple contexts
+- Moderation is always context-scoped
+- Deleted entities must not resolve
+
+- Name lookup is tag-based in the MVP and may return many candidates
+- The MVP applies no ranking or prioritization between domain claims
