@@ -5,11 +5,12 @@
   "main": "src/index.js",
   "type": "commonjs",
   "scripts": {
-    "test": "npx brittle test/brittle/*.js"
+    "test": "node scripts/test-with-timeout.js"
   },
   "dependencies": {
     "corestore": "^7.0.0",
-    "hypercore-crypto": "^3.5.0"
+    "hypercore-crypto": "^3.5.0",
+    "hyperswarm": "^4.8.1"
   },
   "devDependencies": {
     "brittle": "^3.0.0"

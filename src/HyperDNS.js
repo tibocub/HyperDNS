@@ -3,6 +3,10 @@ const publish = require('./publish')
 
 module.exports = class HyperDNS {
   constructor (opts = {}) {
+    // NOTE:
+    // HyperDNS assumes a SINGLE context-scoped graph instance.
+    // It MUST NOT manage graph lifecycle or networking.
+    // It is purely a protocol execution layer.
     if (!opts.graph) throw new Error('graph is required')
     if (!opts.context) throw new Error('context is required')
 

@@ -41,4 +41,6 @@ We can still manage to make a kinda universal source of truth without trusting e
 - WORKFLOW.md
 - docs/HYPERDNS_SCHEMA.md
 - docs/INVARIANTS.md
+- docs/REPLICATION.md
+- docs/NETWORKING.md
 - DECISIONS.md

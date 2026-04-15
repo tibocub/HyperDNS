@@ -55,6 +55,7 @@ When using an LLM:
   * WORKFLOW.md
   * docs/HYPERDNS_SCHEMA.md
   * docs/INVARIANTS.md
+  * docs/REPLICATION.md
 
 * Before coding:
 
