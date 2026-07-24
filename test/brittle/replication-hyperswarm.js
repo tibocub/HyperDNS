@@ -4,7 +4,7 @@ const os = require('os')
 const path = require('path')
 const fs = require('fs')
 
-const { Hypergraph } = require('../../../hyper-bbs/lib/hypergraph')
+const { Hypergraph } = require('hypergraph')
 const { createDNS } = require('../../src')
 const { HyperswarmNetwork } = require('../../network')
 

@@ -5,7 +5,7 @@ const os = require('os')
 const path = require('path')
 const fs = require('fs')
 
-const { Hypergraph } = require('../../../hyper-bbs/lib/hypergraph')
+const { Hypergraph } = require('hypergraph')
 const resolve = require('../../src/resolve')
 
 test('hyperdns: resolve is deterministic and supports multi-claim + moderation', async (t) => {

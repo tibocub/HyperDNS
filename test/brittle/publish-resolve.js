@@ -5,7 +5,7 @@ const os = require('os')
 const path = require('path')
 const fs = require('fs')
 
-const { Hypergraph } = require('../../../hyper-bbs/lib/hypergraph')
+const { Hypergraph } = require('hypergraph')
 const publish = require('../../src/publish')
 const resolve = require('../../src/resolve')
 
