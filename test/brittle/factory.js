@@ -24,7 +24,6 @@ test('factory creates working instance', async (t) => {
   const author = graph.key.toString('hex')
 
   const roleKeyHex = await graph.createRoleBase()
-  await graph.openRoleBase(roleKeyHex)
   await graph.roleBase.init(author)
 
   const context = await graph.createContext()
@@ -32,8 +31,7 @@ test('factory creates working instance', async (t) => {
 
   const dns = createDNS({
     graph,
-    context,
-    author
+    context
   })
 
   await dns.publish('example', {

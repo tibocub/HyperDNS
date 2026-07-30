@@ -25,7 +25,6 @@ test('hyperdns: resolve is deterministic and supports multi-claim + moderation',
   const owner = graph.key.toString('hex')
 
   const roleKeyHex = await graph.createRoleBase()
-  await graph.openRoleBase(roleKeyHex)
   await graph.roleBase.init(owner)
 
   const ctx = await graph.createContext()

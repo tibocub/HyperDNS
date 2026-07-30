@@ -40,13 +40,12 @@ test('resolveAddress works with HyperDNS instance client', async (t) => {
   const author = graph.key.toString('hex')
 
   const roleKeyHex = await graph.createRoleBase()
-  await graph.openRoleBase(roleKeyHex)
   await graph.roleBase.init(author)
 
   const context = await graph.createContext()
   await graph.openContext(context)
 
-  const dns = createDNS({ graph, context, author })
+  const dns = createDNS({ graph, context })
 
   await dns.publish('example', { type: 'A', value: '1.2.3.4' })
   await graph.update()
@@ -84,13 +83,12 @@ test('resolveAddress works with raw graph/context client', async (t) => {
   const author = graph.key.toString('hex')
 
   const roleKeyHex = await graph.createRoleBase()
-  await graph.openRoleBase(roleKeyHex)
   await graph.roleBase.init(author)
 
   const context = await graph.createContext()
   await graph.openContext(context)
 
-  await publish('example', { type: 'A', value: '1.2.3.4' }, { graph, context, author })
+  await publish('example', { type: 'A', value: '1.2.3.4' }, { graph, context })
   await graph.update()
 
   const expected = [{ type: 'A', value: '1.2.3.4' }]
@@ -143,11 +141,9 @@ test('resolveAddress routes independently by authority (no accidental reuse)', a
   const author2 = graph2.key.toString('hex')
 
   const role1 = await graph1.createRoleBase()
-  await graph1.openRoleBase(role1)
   await graph1.roleBase.init(author1)
 
   const role2 = await graph2.createRoleBase()
-  await graph2.openRoleBase(role2)
   await graph2.roleBase.init(author2)
 
   const ctx1 = await graph1.createContext()
@@ -156,8 +152,8 @@ test('resolveAddress routes independently by authority (no accidental reuse)', a
   await graph1.openContext(ctx1)
   await graph2.openContext(ctx2)
 
-  const dns1 = createDNS({ graph: graph1, context: ctx1, author: author1 })
-  const dns2 = createDNS({ graph: graph2, context: ctx2, author: author2 })
+  const dns1 = createDNS({ graph: graph1, context: ctx1 })
+  const dns2 = createDNS({ graph: graph2, context: ctx2 })
 
   await dns1.publish('example', { type: 'A', value: '1.1.1.1' })
   await dns2.publish('example', { type: 'A', value: '2.2.2.2' })

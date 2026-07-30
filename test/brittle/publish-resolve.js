@@ -26,14 +26,13 @@ test('hyperdns: publish then resolve', async (t) => {
   const author = graph.key.toString('hex')
 
   const roleKeyHex = await graph.createRoleBase()
-  await graph.openRoleBase(roleKeyHex)
   await graph.roleBase.init(author)
 
   const ctx = await graph.createContext()
   await graph.openContext(ctx)
 
   // publish() is the write primitive
-  await publish('example', { type: 'A', value: '1.2.3.4' }, { graph, context: ctx, author })
+  await publish('example', { type: 'A', value: '1.2.3.4' }, { graph, context: ctx })
 
   await graph.update()
 

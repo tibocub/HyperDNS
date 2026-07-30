@@ -26,8 +26,17 @@ module.exports = class HyperswarmNetwork extends EventEmitter {
     const dht = opts.dht || null
 
     this.dataSwarm = new Hyperswarm({ maxPeers: this.maxPeers, dht: dht || undefined })
-    // Share the same DHT instance to keep connection behaviour predictable.
-    this.controlSwarm = new Hyperswarm({ maxPeers: this.maxPeers, dht: this.dataSwarm.dht })
+    // NOTE: deliberately NOT sharing dataSwarm's DHT with controlSwarm here.
+    // Hyperswarm#destroy() unconditionally does `await this.dht.destroy()`
+    // with no ownership check and no idempotency guard on the DHT side —
+    // so if both swarms pointed at the same DHT instance, close() (which
+    // destroys both swarms) would destroy that DHT twice. This only shows
+    // up once real DHT sockets actually exist (a real network), which is
+    // exactly why it can pass cleanly in an offline/sandboxed test run and
+    // then hang the whole process on a real machine. If the caller passes
+    // opts.dht explicitly, both swarms intentionally share THAT one instead
+    // (assumed to be owned/destroyed by the caller, not by this class).
+    this.controlSwarm = new Hyperswarm({ maxPeers: this.maxPeers, dht: dht || undefined })
 
     this.connections = 0
     this.authority = null
@@ -99,7 +108,7 @@ module.exports = class HyperswarmNetwork extends EventEmitter {
   }
 
   async close () {
-    await this.dataSwarm.destroy()
-    await this.controlSwarm.destroy()
+    await withTimeout(this.dataSwarm.destroy(), 2000)
+    await withTimeout(this.controlSwarm.destroy(), 2000)
   }
 }

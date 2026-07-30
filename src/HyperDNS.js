@@ -12,7 +12,6 @@ module.exports = class HyperDNS {
 
     this.graph = opts.graph
     this.context = opts.context
-    this.author = opts.author || null
     this.trustedModerators = Array.isArray(opts.trustedModerators) ? opts.trustedModerators : []
   }
 
@@ -26,14 +25,10 @@ module.exports = class HyperDNS {
   }
 
   async publish (name, record, opts = {}) {
-    const author = opts.author || this.author
-    if (!author) throw new Error('author is required')
-
     return publish(name, record, {
       ...opts,
       graph: this.graph,
-      context: this.context,
-      author
+      context: this.context
     })
   }
 }

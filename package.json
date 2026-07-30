@@ -13,6 +13,8 @@
     "hyperswarm": "^4.8.1"
   },
   "devDependencies": {
-    "brittle": "^3.0.0"
-  }
+    "brittle": "^3.0.0",
+    "hypergraph": "github:tibocub/hypergraph"
+  },
+  "//": "hypergraph is not on npm yet. For local development against an unpublished/in-progress hypergraph checkout, run `npm link` from that checkout, then `npm link hypergraph` here to override this entry."
 }

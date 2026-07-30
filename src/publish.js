@@ -6,17 +6,21 @@ async function publish (name, record, opts = {}) {
 
   if (!opts.graph) throw new Error('opts.graph is required')
   if (!opts.context) throw new Error('opts.context is required')
-  if (!opts.author || typeof opts.author !== 'string') throw new Error('opts.author is required')
 
   const graph = opts.graph
   const context = opts.context
-  const author = opts.author
 
-  const domain = await graph.put({ type: 'domain', author })
+  // NOTE: authorship is NOT set here. `graph.put`/`tag`/`relate` derive the
+  // author from the graph instance's own signing identity - there is no way
+  // (and should be no way) for a caller to author as anyone else. Records
+  // published through this `graph` are always authored by whichever identity
+  // that graph instance holds.
+
+  const domain = await graph.put({ type: 'domain' })
   await graph.putContent(domain.id, JSON.stringify({ name }), 'application/json')
-  await graph.tag(domain.id, `name:${name}`, { author, context })
+  await graph.tag(domain.id, `name:${name}`, { context })
 
-  const rec = await graph.put({ type: 'record', author })
+  const rec = await graph.put({ type: 'record' })
   const body = {
     name,
     type: record.type,
@@ -29,7 +33,6 @@ async function publish (name, record, opts = {}) {
     from: domain.id,
     to: rec.id,
     type: 'has_record',
-    author,
     context
   })
 

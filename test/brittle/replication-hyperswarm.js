@@ -52,21 +52,26 @@ test('network: hyperswarm full-join replication allows publish on A, resolve on 
   })
 
   const authorA = graphA.key.toString('hex')
-  const authorB = graphB.key.toString('hex')
 
+  // A owns the authority: its own RoleBase and context. B is a genuine
+  // *member* of the same authority - not a separate one of its own - so it
+  // opens the SAME RoleBase and the SAME context A created, rather than
+  // creating its own. (A previous version of this test had B create its
+  // own separate context AND its own separate RoleBase, which meant even
+  // with a working network connection, B could never actually see or
+  // trust A's data - this test always passed via its own soft-pass
+  // fallback branches, never by actually proving replication worked.)
   const roleA = await graphA.createRoleBase()
-  await graphA.openRoleBase(roleA)
   await graphA.roleBase.init(authorA)
+  await graphB.openRoleBase(roleA)
 
-  const roleB = await graphB.createRoleBase()
-  await graphB.openRoleBase(roleB)
-  await graphB.roleBase.init(authorB)
+  const ctx = await graphA.createContext()
+  await graphA.openContext(ctx)
+  await graphB.openContext(ctx)
 
-  const ctxA = await graphA.createContext()
-  const ctxB = await graphB.createContext()
-
-  await graphA.openContext(ctxA)
-  await graphB.openContext(ctxB)
+  // B needs to read A's entities/content, not just the context's tag/edge
+  // events - those live in A's own UserCore.
+  await graphB.openUserCore(graphA.key)
 
   // Transport layer is network-only: replicate stores, do not call protocol functions.
   const netA = new HyperswarmNetwork(storeA)
@@ -87,16 +92,18 @@ test('network: hyperswarm full-join replication allows publish on A, resolve on 
     }
 
     // A publishes into its local graph.
-    const dnsA = createDNS({ graph: graphA, context: ctxA, author: authorA })
+    const dnsA = createDNS({ graph: graphA, context: ctx })
     await dnsA.publish('example', { type: 'A', value: '1.2.3.4' })
     await graphA.update()
 
-    // B should eventually see data via replication.
-    const dnsB = createDNS({ graph: graphB, context: ctxB, author: authorB })
+    // B should eventually see data via replication - resolving against
+    // the SAME context/RoleBase A actually published into and owns.
+    const dnsB = createDNS({ graph: graphB, context: ctx })
 
     const ok = await waitFor(async () => {
       try {
         await graphB.update()
+        await graphB.roleBase.update()
         const r = await dnsB.resolve('example')
         if (!Array.isArray(r) || r.length !== 1) return null
         if (r[0].type !== 'A' || r[0].value !== '1.2.3.4') return null
