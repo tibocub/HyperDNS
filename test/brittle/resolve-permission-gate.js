@@ -207,15 +207,22 @@ test('resolve() ignores a record relate()-attached to someone else\'s domain by 
   await graphAttacker.relate({ from: ownerDomain.id, to: spoofRecord.id, type: 'has_record', context: ctxKey })
   await graphAttacker.update()
 
-  const spoofReplicated = await waitFor(async () => {
+  const spoofAppeared = await waitFor(async () => {
     await graphOwner.update()
     for await (const edge of graphOwner.edges(ownerDomain.id, { direction: 'out', type: 'has_record' })) {
       if (edge.to === spoofRecord.id) return true
     }
     return false
-  })
-  t.ok(spoofReplicated, 'the spoofed edge itself did replicate and attach at the raw graph level (relate() really does allow this)')
+  }, { timeoutMs: 2000 })
+  // hypergraph itself now rejects a relation/create event at apply time
+  // whenever its author doesn't actually own `from` (see hypergraph's
+  // storage-model.md / context-base.js #applyRelation) — so the spoofed
+  // edge no longer even attaches at the raw graph level on replication,
+  // let alone resolves. This used to be the one layer of defense
+  // (resolve()'s own edge-author check, below); it's now a second,
+  // redundant one - upstream fixed the same gap at its actual source.
+  t.absent(spoofAppeared, 'hypergraph itself now rejects the spoofed edge at apply time - it never even attaches at the raw graph level')
 
   const result = await resolve('example', { graph: graphOwner, context: ctxKey })
-  t.alike(result, [{ type: 'A', value: '1.2.3.4' }], 'only the legitimate record resolves - the spoofed relate() is ignored')
+  t.alike(result, [{ type: 'A', value: '1.2.3.4' }], 'only the legitimate record resolves - the spoofed relate() is ignored (belt-and-suspenders: hypergraph rejects it at apply time, and resolve()\'s own edge-author check would catch it even if it hadn\'t)')
 })
