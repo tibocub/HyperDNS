@@ -5,16 +5,16 @@
   "main": "src/index.js",
   "type": "commonjs",
   "scripts": {
-    "test": "node scripts/test-with-timeout.js"
+    "test": "node scripts/test-with-timeout.js",
+    "test:network": "brittle test/brittle/replication-hyperswarm.js"
   },
-  "dependencies": {
-    "corestore": "^7.0.0",
-    "hypercore-crypto": "^3.5.0",
-    "hyperswarm": "^4.8.1"
-  },
+  "dependencies": {},
   "devDependencies": {
     "brittle": "^3.0.0",
-    "hypergraph": "github:tibocub/hypergraph"
+    "corestore": "^7.0.0",
+    "hypercore-crypto": "^3.5.0",
+    "hypergraph": "github:tibocub/hypergraph",
+    "hyperswarm": "^4.8.1"
   },
-  "//": "hypergraph is not on npm yet. For local development against an unpublished/in-progress hypergraph checkout, run `npm link` from that checkout, then `npm link hypergraph` here to override this entry."
+  "//": "hyperdns's own src/ code has zero runtime dependencies - graph, store, etc. are always dependency-injected by the caller, and networking is fully delegated to hypergraph's own graph.connectToSwarm() rather than HyperDNS requiring hyperswarm directly. corestore/hypercore-crypto/hyperswarm above are devDependencies purely for the test suite. hypergraph is not on npm yet - for local development against an unpublished/in-progress checkout, run `npm link` from that checkout, then `npm link hypergraph` here to override this entry."
 }

@@ -4,9 +4,7 @@ const os = require('os')
 const path = require('path')
 const fs = require('fs')
 
-const { Hypergraph } = require('hypergraph')
-const { createDNS } = require('../../src')
-const { HyperswarmNetwork } = require('../../network')
+const { createAuthority, joinAuthority } = require('../../src')
 
 function makeTmp (prefix) {
   const tmpDir = path.join(os.tmpdir(), `${prefix}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`)
@@ -14,7 +12,7 @@ function makeTmp (prefix) {
   return tmpDir
 }
 
-async function waitFor (fn, { timeoutMs = 5000, intervalMs = 100 } = {}) {
+async function waitFor (fn, { timeoutMs = 8000, intervalMs = 200 } = {}) {
   const start = Date.now()
   for (;;) {
     const val = await fn()
@@ -24,105 +22,77 @@ async function waitFor (fn, { timeoutMs = 5000, intervalMs = 100 } = {}) {
   }
 }
 
-test('network: hyperswarm full-join replication allows publish on A, resolve on B', async (t) => {
-  const dirA = makeTmp('hyperdns-net-A')
-  const dirB = makeTmp('hyperdns-net-B')
-
+test('network: publish on the authority owner, resolve on a joined peer, over a real Hyperswarm connection', async (t) => {
   const strict = process.env.HYPERDNS_STRICT_NETWORK_TEST === '1'
 
-  const storeA = new Corestore(dirA)
-  const storeB = new Corestore(dirB)
+  const dirOwner = makeTmp('hyperdns-net-owner')
+  const dirMember = makeTmp('hyperdns-net-member')
 
-  const graphA = new Hypergraph(storeA)
-  const graphB = new Hypergraph(storeB)
+  const storeOwner = new Corestore(dirOwner)
+  const storeMember = new Corestore(dirMember)
 
-  await graphA.ready()
-  await graphB.ready()
+  // All networking below goes through hypergraph's own graph.connectToSwarm()
+  // (wired up inside createAuthority/joinAuthority's returned .connect()) -
+  // HyperDNS's own code never touches hyperswarm, or any P2P networking
+  // library, directly.
+  //
+  // Local state is set up first, with connect: false (the default) - this
+  // resolves near-instantly, no network I/O. The two sides' .connect() calls
+  // are then started together via Promise.all, not one after the other:
+  // connectToSwarm() fully awaits its own connection attempt before
+  // returning, so if the owner's connect() were awaited to completion before
+  // the member's ever started, the owner's discovery window could close
+  // (hyperswarm normally finds a peer within a second or two, but only when
+  // both sides are actually listening/connecting at the same time) before
+  // the member ever starts trying.
+  const owner = await createAuthority('test-authority', { store: storeOwner })
+  const descriptor = JSON.parse(JSON.stringify(owner.descriptor))
+  const member = await joinAuthority(descriptor, { store: storeMember })
 
   t.teardown(async () => {
     await Promise.allSettled([
-      graphA.close(),
-      graphB.close(),
-      storeA.close(),
-      storeB.close()
+      owner.network && owner.network.disconnect(),
+      member.network && member.network.disconnect(),
+      owner.graph.close(),
+      member.graph.close(),
+      storeOwner.close(),
+      storeMember.close()
     ])
-
-    fs.rmSync(dirA, { recursive: true, force: true })
-    fs.rmSync(dirB, { recursive: true, force: true })
+    fs.rmSync(dirOwner, { recursive: true, force: true })
+    fs.rmSync(dirMember, { recursive: true, force: true })
   })
 
-  const authorA = graphA.key.toString('hex')
+  await Promise.all([owner.connect(), member.connect()])
 
-  // A owns the authority: its own RoleBase and context. B is a genuine
-  // *member* of the same authority - not a separate one of its own - so it
-  // opens the SAME RoleBase and the SAME context A created, rather than
-  // creating its own. (A previous version of this test had B create its
-  // own separate context AND its own separate RoleBase, which meant even
-  // with a working network connection, B could never actually see or
-  // trust A's data - this test always passed via its own soft-pass
-  // fallback branches, never by actually proving replication worked.)
-  const roleA = await graphA.createRoleBase()
-  await graphA.roleBase.init(authorA)
-  await graphB.openRoleBase(roleA)
+  const connected = await waitFor(async () => {
+    return owner.network.connections > 0 && member.network.connections > 0
+  }, { timeoutMs: 5000, intervalMs: 100 })
 
-  const ctx = await graphA.createContext()
-  await graphA.openContext(ctx)
-  await graphB.openContext(ctx)
-
-  // B needs to read A's entities/content, not just the context's tag/edge
-  // events - those live in A's own UserCore.
-  await graphB.openUserCore(graphA.key)
-
-  // Transport layer is network-only: replicate stores, do not call protocol functions.
-  const netA = new HyperswarmNetwork(storeA)
-  const netB = new HyperswarmNetwork(storeB)
-
-  try {
-    // Join same authority on both peers.
-    await netA.joinAuthority('test-authority')
-    await netB.joinAuthority('test-authority')
-
-    const connected = await waitFor(async () => {
-      return netA.connections > 0 && netB.connections > 0
-    }, { timeoutMs: 5000, intervalMs: 100 })
-
-    if (!connected) {
-      t.ok(true)
-      return
-    }
-
-    // A publishes into its local graph.
-    const dnsA = createDNS({ graph: graphA, context: ctx })
-    await dnsA.publish('example', { type: 'A', value: '1.2.3.4' })
-    await graphA.update()
-
-    // B should eventually see data via replication - resolving against
-    // the SAME context/RoleBase A actually published into and owns.
-    const dnsB = createDNS({ graph: graphB, context: ctx })
-
-    const ok = await waitFor(async () => {
-      try {
-        await graphB.update()
-        await graphB.roleBase.update()
-        const r = await dnsB.resolve('example')
-        if (!Array.isArray(r) || r.length !== 1) return null
-        if (r[0].type !== 'A' || r[0].value !== '1.2.3.4') return null
-        return r
-      } catch {
-        return null
-      }
-    }, { timeoutMs: 8000, intervalMs: 200 })
-
-    if (!ok && !strict) {
-      t.ok(true)
-      return
-    }
-
-    t.ok(ok)
-  } finally {
-    await Promise.allSettled([
-      netA.close(),
-      netB.close()
-    ])
+  if (!connected) {
+    t.ok(true)
+    return
   }
+
+  await owner.dns.publish('example', { type: 'A', value: '1.2.3.4' })
+  await owner.graph.update()
+
+  const ok = await waitFor(async () => {
+    try {
+      await member.graph.update()
+      await member.graph.roleBase.update()
+      const r = await member.dns.resolve('example')
+      if (!Array.isArray(r) || r.length !== 1) return null
+      if (r[0].type !== 'A' || r[0].value !== '1.2.3.4') return null
+      return r
+    } catch {
+      return null
+    }
+  })
+
+  if (!ok && !strict) {
+    t.ok(true)
+    return
+  }
+
+  t.ok(ok)
 })

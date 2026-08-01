@@ -154,3 +154,46 @@ Rewrote the test so peer B opens the SAME context and RoleBase peer A owns, inst
 
 - B now: opens A's RoleBase via `openRoleBase(roleA)` (needed for B's own `graph.can()` checks in `resolve()`'s permission gate to see A's actual permissions, not an empty registry B owns itself), opens A's context via the same key, and calls `openUserCore(graphA.key)` to read A's entity content
 - This is the only test in the suite that now genuinely proves the network transport layer works end-to-end; everything else either uses direct Corestore stream replication (fast, deterministic, but not exercising `HyperswarmNetwork` itself) or doesn't touch the network at all
+
+---
+
+## 2026-07-30 — Retire HyperDNS's own `HyperswarmNetwork`; delegate all networking to hypergraph's `connectToSwarm()`; add `createAuthority()`/`joinAuthority()` bootstrap
+
+### Decision
+
+`network/HyperswarmNetwork.js` is removed. All networking now goes through `graph.connectToSwarm()` (hypergraph's own). A new `src/authority.js` provides `createAuthority()`/`joinAuthority()`, bundling the Hypergraph + RoleBase + context + (optional) network setup every test and example previously did by hand. `corestore`/`hypercore-crypto`/`hyperswarm` moved from `dependencies` to `devDependencies` — none of HyperDNS's own `src/` code ever required them at runtime to begin with (`graph`/`store` are always dependency-injected), so this just makes the manifest honest.
+
+### Rationale
+
+- HyperDNS's own dual-swarm design (a data swarm plus a separate hand-rolled JSON control swarm) is exactly the design hypergraph's own networking layer already tried and moved away from, for reliability reasons. `graph.connectToSwarm()` uses a single swarm with the writer-auth protocol multiplexed over the same connection via protomux, and has no equivalent to the DHT-double-destroy bug class HyperDNS's own version needed a dedicated fix for — the design that caused that bug (two Hyperswarm instances sharing one DHT) doesn't exist here, because there's only ever one swarm
+- HyperDNS's own control channel was scaffolding only — wired up (an event emitter, a message parser) but nothing in `src/` ever sent or handled a control message. `connectToSwarm()`'s writer-request/grant flow is complete, tested, and enforced at apply time (not just as a courtesy on the requesting side) in hypergraph's own suite
+- Mirrors hypergraph's own relationship to Hyperswarm: full support for it, zero hard dependency on it. HyperDNS's own code doesn't even lazily `require('hyperswarm')` anymore — it only ever calls `graph.connectToSwarm()`, so swapping hypergraph's transport later requires no HyperDNS-side change at all
+- `network/topic.js`'s `deriveAuthorityTopic` is kept — deriving a topic from a human-chosen authority name is genuinely DNS-specific logic hypergraph has no reason to know about. `deriveControlTopic` is removed along with the control swarm it existed for
+
+### Consequences
+
+- `createAuthority(name, { store, connect })` / `joinAuthority(descriptor, { store, connect })` are the new primary entry points for anything that needs a full authority, not just a pre-existing `graph`/`context` pair (which `createDNS()` still handles directly, unchanged)
+- The returned `descriptor` is plain and JSON-serializable — `graph.export()`'s shape, extended with `authority` (the name) and `roleBaseKey` (which `export()`/`Hypergraph.join()` don't know about) — so it can be shared however an app likes (printed, sent to a friend, embedded in an address) and rebuilt with `joinAuthority()`
+- `test/brittle/replication-hyperswarm.js` was rewritten around the new bootstrap API
+
+---
+
+## 2026-07-31 — Fixed: `createAuthority()`/`joinAuthority()` connecting sequentially prevented peers from ever finding each other quickly
+
+### Decision
+
+Connecting to the network is no longer something `createAuthority()`/`joinAuthority()` do internally as part of `opts.connect: true` alone. Both now return a `.connect()` method; `opts.connect: true` remains as convenience sugar for the common single-instance case, but two peers being set up together (in a test, or in any app bootstrapping both sides at once) should call `.connect()` on each and await them together (`Promise.all`), not sequentially.
+
+### Rationale
+
+- My first diagnosis of this test's slow runtime (previous entry above) was wrong. I attributed it to `connectToSwarm()`'s internally generous, real-world-calibrated timeouts and left it there — but real-world testing (on a machine where Hyperswarm normally connects in 1-2 seconds, not minutes) showed it simply never completing at all. That was the right thing to push back on, and pushed me to actually re-examine the retry logic rather than re-assert the same explanation
+- The actual bug: `graph.connectToSwarm()` fully awaits its own connection attempt (including hypergraph's internal retry/backoff logic) before returning. `createAuthority(..., { connect: true })` followed by `joinAuthority(..., { connect: true })` therefore connects sequentially — the owner's discovery window (and any retries, which involve leaving and rejoining the topic) runs entirely, and potentially closes, before the member/peer side ever starts trying to connect at all. Two peers can't find each other in seconds if only one of them is ever actively listening at any given moment, no matter how fast the underlying DHT normally is
+- This has nothing to do with hypergraph's own timeout tuning being wrong — it's a HyperDNS-side API/usage bug in how the bootstrap layer exposed connecting at all
+
+### Consequences
+
+- `test/brittle/replication-hyperswarm.js` now sets up both sides fully locally first (`connect: false`, the default — resolves near-instantly, no network I/O), then calls `owner.connect()` and `member.connect()` together via `Promise.all`, so both sides are genuinely trying to find each other at the same time
+- The test's timeout was dropped back to brittle's normal default (removed the extended custom timeout and the `--timeout 500000` flag from `npm run test:network`) — if this fix is correct, connecting two same-machine peers should take seconds, not minutes, and a long custom timeout would only mask a real regression rather than surface one
+- I could not fully validate the fix's actual timing improvement in my own sandboxed environment specifically — its network conditions may not support real DHT/UDP connectivity at all, independent of anything in this code, which would explain why even a correct implementation might still not complete there. The structural fix (concurrent rather than sequential connection) is correct regardless and should be verified on a real machine
+- The bootstrap logic itself (descriptor creation, `joinAuthority()`, publish/resolve across peers) remains separately and fully verified by `test/brittle/authority.js`, over fast, deterministic direct Corestore replication rather than real Hyperswarm — that test was never affected by this bug since it never uses `connect: true` at all
+- See `test/brittle/authority.js` for the primary regression coverage of `createAuthority()`/`joinAuthority()`

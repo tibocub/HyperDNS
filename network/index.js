@@ -1,4 +1,3 @@
 module.exports = {
-  HyperswarmNetwork: require('./HyperswarmNetwork'),
-  topic: require('./topic')
+  deriveAuthorityTopic: require('./topic').deriveAuthorityTopic
 }
