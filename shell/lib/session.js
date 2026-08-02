@@ -11,6 +11,24 @@ function sanitizeName (name) {
   return name.replace(/[^a-zA-Z0-9_-]/g, '_')
 }
 
+// Catches the most common real mistake: passing a path (or anything with
+// slashes/whitespace) where a short, human-chosen name was expected.
+// Without this, sanitizeName() above would silently turn e.g.
+// ".hyperdns/test2/descriptor.json" into a confusing, unintended local
+// directory name instead of failing clearly.
+function validateAuthorityName (name) {
+  if (typeof name !== 'string' || name.trim().length === 0) {
+    throw new Error('authority name is required')
+  }
+  if (/[/\\]/.test(name) || /\s/.test(name)) {
+    throw new Error(
+      `"${name}" doesn't look like an authority name - it looks like a path. ` +
+      'create/join take a short, human-chosen name (e.g. "bobsDNS"), not a file path. ' +
+      'To join an existing authority from a descriptor file, use "join <path-to-descriptor.json>" instead.'
+    )
+  }
+}
+
 function descriptorPath (dir) {
   return path.join(dir, 'descriptor.json')
 }
@@ -125,6 +143,7 @@ function createSession (opts = {}) {
   }
 
   async function create (name, opts = {}) {
+    validateAuthorityName(name)
     await closeCurrent()
 
     const dir = authorityDir(baseDir, 'owned', name)
@@ -155,7 +174,11 @@ function createSession (opts = {}) {
 
     const result = await createAuthority(name, { store, contextOpts: opts.contextOpts, graphOpts: graphOptsForSeed(seed) })
     saveDescriptor(dir, result.descriptor)
-    current = { ...result, store, name, dir, resumed: false }
+    result.store = store
+    result.name = name
+    result.dir = dir
+    result.resumed = false
+    current = result
     return current
   }
 
@@ -186,14 +209,18 @@ function createSession (opts = {}) {
 
     const result = await joinAuthority(descriptor, { store, graphOpts: graphOptsForSeed(seed) })
     saveDescriptor(dir, result.descriptor)
-    current = { ...result, store, name, dir, resumed: false }
+    result.store = store
+    result.name = name
+    result.dir = dir
+    result.resumed = false
+    current = result
     return current
   }
 
   async function connect (networkOpts) {
-    const session = requireCurrent()
-    if (session.network) return session.network
-    return session.connect(networkOpts)
+    const authority = requireCurrent()
+    if (authority.network) return authority.network
+    return authority.connect(networkOpts)
   }
 
   function get () {

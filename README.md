@@ -69,6 +69,10 @@ the current directory. Run `help` inside the shell for the full command list, or
 <path-to-descriptor.json>` to join an authority someone else created (get their descriptor via
 their own shell's `descriptor` command).
 
+**See `docs/SHELL_GUIDE.md` for a full walkthrough** - in particular, testing with two peers
+needs two separate shell processes (one shell only ever holds one "current" authority at a
+time), and `connect` can genuinely take a while with nobody else around to connect to.
+
 ---
 
 ## Docs
@@ -78,5 +82,6 @@ their own shell's `descriptor` command).
 - docs/INVARIANTS.md
 - docs/REPLICATION.md
 - docs/NETWORKING.md
+- docs/SHELL_GUIDE.md
 - DECISIONS.md
 - WORKFLOW.md

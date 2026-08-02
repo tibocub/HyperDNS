@@ -242,3 +242,24 @@ Local storage is now split into `.hyperdns/owned/<name>/` (authorities this iden
 - Added `assertNotNameCollision()`: if `join()` finds existing local data under a name but with a different RoleBase key (a different actual authority), it refuses rather than silently reusing/overwriting the wrong local state
 - `join()` also gives a clear error now when given something that's neither an existing file path nor valid JSON, instead of a confusing raw `JSON.parse` failure
 - See `test/brittle/shell-session.js` for regression coverage: owner + local peer no longer collide even with the owner's session still open, and a genuine name collision between two different authorities is refused
+
+---
+
+## 2026-08-04 — Fixed: `connect()`'s success never actually reached the shell's "current" state
+
+### Decision
+
+`create()`/`join()` no longer build the `current` authority object via `{ ...result, ... }` (spread). They mutate `result` directly and assign it as-is.
+
+### Rationale
+
+- Reported directly: the shell's prompt kept showing "offline" even after `connect` printed "connected", and calling `connect` a second time crashed with "Corestore is closed" deep inside hypergraph's networking code
+- Root cause: `attachConnect()` (`src/authority.js`) gives the returned object a `.connect()` closure that sets `result.network = ...` on that exact object. `create()`/`join()` then did `current = { ...result, store, name, dir, resumed }` — a shallow copy. The closure kept mutating the *original* `result` object; `current` (what the prompt, `status`, and the "already connected" check all actually read) was a disconnected copy whose `.network` never changed from `null`
+- This explains both symptoms as one bug: the prompt/status never reflecting a real, successful connection, and a second `connect` command never short-circuiting on "already connected" — so it attempted a second, concurrent `connectToSwarm()` on the same graph, which is what actually crashed
+- The resume branch of `create()` was already written correctly (mutates `current` directly, added the bug fresh-create/join paths introduced by comparison) — not a new pattern, just inconsistently applied
+
+### Consequences
+
+- See `test/brittle/shell-session.js`: a fast, non-network regression test checks the actual invariant directly (`session.get()` is reference-equal to what `create()`/`join()` returned, and mutating `.network` on that object is immediately visible via `session.get()`) rather than waiting on a real, possibly slow network connection to prove it
+- Also added: `create`/`join` reject a name containing a path separator or whitespace with a clear error, instead of silently mangling it into a confusing local directory name (a real mistake made while testing this) — see the same test file
+- Added `docs/SHELL_GUIDE.md`, linked from the README: covers the single-current-authority model (testing two peers needs two separate shell processes, not one juggling both), `create`/`join` naming, `connect`'s realistic timing expectations, `status`'s fields, and the on-disk layout

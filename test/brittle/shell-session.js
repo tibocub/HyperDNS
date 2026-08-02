@@ -106,12 +106,59 @@ test('session: join() resumes the SAME joining identity across restarts too, not
   await peerSession2.shutdown()
 })
 
-test('session: requireCurrent() throws a clear error when nothing has been created or joined yet', async (t) => {
+test('session: get() returns the exact same object create()/join() returned, so connect()\'s mutation of .network is actually visible', async (t) => {
+  // Regression test for a real bug: create()/join() used to do
+  // `current = { ...result, store, name, dir, resumed }` - spreading
+  // result into a brand new object. attachConnect()'s `.connect()` method
+  // is a closure that mutates the ORIGINAL result object's `.network`
+  // property - the spread-copied `current` object has no relationship to
+  // that closure at all, so calling connect() correctly set network on the
+  // object connect() itself was defined on, while everything the shell
+  // actually reads (the prompt, `status`, a second `connect()` call's
+  // "already connected" check) kept reading the spread copy, which never
+  // updated - .network stayed null forever, so the shell always showed
+  // "offline" even after a real, successful connect(), and a second
+  // "connect" command never short-circuited, attempting a second
+  // concurrent connectToSwarm() on the same graph.
+  //
+  // This checks the actual invariant directly - no need to wait on a real,
+  // possibly slow network call to prove it.
   const baseDir = makeTmpBaseDir()
   t.teardown(() => fs.rmSync(baseDir, { recursive: true, force: true }))
 
   const session = createSession({ baseDir })
-  t.exception(() => session.requireCurrent(), /no authority loaded/)
+  const authority = await session.create('bobsDNS')
+
+  t.is(session.get(), authority, 'session.get() is reference-equal to what create() returned, not a copy')
+
+  // Simulates exactly what connect()'s attachConnect closure does,
+  // without waiting on a real (possibly very slow) network call.
+  authority.network = { fakeMarker: true }
+  t.is(session.get().network, authority.network, "mutating .network on the object create() returned is immediately visible via session.get() - this is what the shell's prompt/status/'already connected' check all rely on")
+
+  await session.shutdown()
+})
+
+test('session: the same invariant holds for join(), not just create()', async (t) => {
+  const ownerBaseDir = makeTmpBaseDir()
+  const peerBaseDir = makeTmpBaseDir()
+  t.teardown(() => {
+    fs.rmSync(ownerBaseDir, { recursive: true, force: true })
+    fs.rmSync(peerBaseDir, { recursive: true, force: true })
+  })
+
+  const ownerSession = createSession({ baseDir: ownerBaseDir })
+  const owner = await ownerSession.create('bobsDNS')
+
+  const peerSession = createSession({ baseDir: peerBaseDir })
+  const peer = await peerSession.join(JSON.stringify(owner.descriptor))
+
+  t.is(peerSession.get(), peer, 'session.get() is reference-equal to what join() returned')
+  peer.network = { fakeMarker: true }
+  t.is(peerSession.get().network, peer.network, "mutating .network on join()'s returned object is immediately visible via session.get()")
+
+  await ownerSession.shutdown()
+  await peerSession.shutdown()
 })
 
 test('session: create() and join() for the same authority name do not collide on disk, even while both are open at once', async (t) => {
@@ -160,4 +207,26 @@ test('session: join() refuses to reuse local data for a different authority that
     /name collision/,
     'joining a different authority with a colliding name is refused, not silently mixed with the first'
   )
+})
+
+test('session: requireCurrent() throws a clear error when nothing has been created or joined yet', async (t) => {
+  const baseDir = makeTmpBaseDir()
+  t.teardown(() => fs.rmSync(baseDir, { recursive: true, force: true }))
+
+  const session = createSession({ baseDir })
+  t.exception(() => session.requireCurrent(), /no authority loaded/)
+})
+
+test('session: create() rejects a path where a name was expected, instead of silently mangling it into a confusing directory name', async (t) => {
+  const baseDir = makeTmpBaseDir()
+  t.teardown(() => fs.rmSync(baseDir, { recursive: true, force: true }))
+
+  const session = createSession({ baseDir })
+  await t.exception(
+    () => session.create('.hyperdns/test2/descriptor.json'),
+    /doesn't look like an authority name/,
+    'a path-like name is rejected with a clear error'
+  )
+  await t.exception(() => session.create(''), 'an empty name is rejected')
+  await t.exception(() => session.create('has spaces'), 'a name containing whitespace is rejected')
 })
