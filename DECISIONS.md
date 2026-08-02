@@ -197,3 +197,28 @@ Connecting to the network is no longer something `createAuthority()`/`joinAuthor
 - I could not fully validate the fix's actual timing improvement in my own sandboxed environment specifically — its network conditions may not support real DHT/UDP connectivity at all, independent of anything in this code, which would explain why even a correct implementation might still not complete there. The structural fix (concurrent rather than sequential connection) is correct regardless and should be verified on a real machine
 - The bootstrap logic itself (descriptor creation, `joinAuthority()`, publish/resolve across peers) remains separately and fully verified by `test/brittle/authority.js`, over fast, deterministic direct Corestore replication rather than real Hyperswarm — that test was never affected by this bug since it never uses `connect: true` at all
 - See `test/brittle/authority.js` for the primary regression coverage of `createAuthority()`/`joinAuthority()`
+
+---
+
+## 2026-08-02 — Added the shell (`shell/`, `bin/cli.js`), forked from js-shell-kit
+
+### Decision
+
+HyperDNS ships a shell — a single long-running process with commands (`create`, `join`, `connect`, `publish`, `resolve`, `status`, `descriptor`, ...) — rather than a short-lived CLI. Forked from js-shell-kit (github.com/tibocub/js-shell-kit), keeping its REPL/readline/tab-completion machinery and the `{name: {fn, help}}` builtin pattern (auto-generates the `help` command's output), removing program execution and the gnu-like builtins (`cd`, `ls`, `type`) entirely — HyperDNS's own commands replace them.
+
+### Rationale
+
+- A short-lived CLI process would pay the network connection cost on every single invocation; the entire point of the underlying P2P networking is to stay connected between commands
+- `shell/lib/session.js` (new, not from js-shell-kit) manages the shell's single "current authority" — creating/joining once, then `publish`/`resolve`/`status` all operate on it — and persists it under `.hyperdns/<name>/` so relaunching the shell resumes rather than recreates
+
+### Bugs found while actually testing the shell, not just writing it
+
+- **Command interleaving under piped/fast input**: `readline` fires `'line'` for every buffered line without waiting for a previous async listener to resolve, so `create` → `status` → `publish` piped in together started executing concurrently instead of in order, with `status`/`publish` running before `create` had finished. Fixed with an explicit serialization queue in `shell/main.js`.
+- **`status` always reported "owner"**: compared the RoleBase's own key against itself (`descriptor.roleBaseKey === graph.roleBase.key`) — both the owner and any joining peer open the *same* RoleBase, so this was trivially always true regardless of actual role. Fixed to check the real registry (`registry.members[myKey]`).
+- **The significant one — resuming silently produced a different identity every time**: `new Hypergraph(store)` with no explicit seed generates a fresh random identity on every construction; nothing is automatically derived from the store's own on-disk state. A first attempt passing only `{ seed }` was insufficient: `graph.key` (what a RoleBase registry actually checks permissions against) comes from `deviceKeyPair`, which defaults to a fresh random keypair regardless of `seed` unless passed explicitly. Fixed by persisting one seed privately (`identity-secret.json` — never written into the shareable `descriptor.json`) and deriving a stable `deviceKeyPair` from it via `hypercoreCrypto.keyPair(seed)` (deterministic from the same seed).
+
+### Consequences
+
+- `corestore`/`hypergraph`/`hyperswarm` moved from `devDependencies` to real `dependencies` (plus `ansi-colors`/`shell-quote`, new) — the shell is a genuine shipped feature that constructs these at runtime, unlike `src/`'s library code, which stays fully dependency-injected
+- `.hyperdns/` (Corestore data, descriptors, and the private identity seed) is gitignored
+- See `test/brittle/shell-session.js` for regression coverage of the identity-stability bugs specifically (resume produces the same identity and the same recognized owner role, both for the creating side and a joining peer) and the persistence flow (publish survives a full close and resume)

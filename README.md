@@ -42,6 +42,35 @@ into the **"bobsDNS"** hyperDNS instance.
 
 ---
 
+## Usage
+
+HyperDNS ships a shell - a single long-running process you interact with via commands, rather
+than a short-lived CLI, since the whole point of the underlying P2P networking is to stay
+connected between commands instead of reconnecting on every invocation.
+
+```
+npm run shell
+```
+
+```
+hyperdns > create bobsDNS
+created authority "bobsDNS"
+hyperdns:bobsDNS (offline) > connect
+connected
+hyperdns:bobsDNS (offline) > publish blog A 1.2.3.4
+published blog -> A 1.2.3.4
+hyperdns:bobsDNS (online) > resolve blog
+  A  1.2.3.4
+```
+
+Relaunching the shell and running `create bobsDNS` again resumes the same authority (same
+identity, same data) rather than creating a new one - state is persisted under `.hyperdns/` in
+the current directory. Run `help` inside the shell for the full command list, or `join
+<path-to-descriptor.json>` to join an authority someone else created (get their descriptor via
+their own shell's `descriptor` command).
+
+---
+
 ## Docs
 
 - docs/ARCHITECTURE.md

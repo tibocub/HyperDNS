@@ -3,18 +3,25 @@
   "version": "0.0.1",
   "private": true,
   "main": "src/index.js",
+  "bin": {
+    "hyperdns": "bin/cli.js"
+  },
   "type": "commonjs",
   "scripts": {
     "test": "node scripts/test-with-timeout.js",
-    "test:network": "brittle test/brittle/replication-hyperswarm.js"
+    "test:network": "brittle test/brittle/replication-hyperswarm.js",
+    "shell": "node bin/cli.js"
   },
-  "dependencies": {},
+  "dependencies": {
+    "ansi-colors": "^4.1.3",
+    "corestore": "^7.0.0",
+    "hypergraph": "github:tibocub/hypergraph",
+    "hyperswarm": "^4.8.1",
+    "shell-quote": "^1.8.3"
+  },
   "devDependencies": {
     "brittle": "^3.0.0",
-    "corestore": "^7.0.0",
-    "hypercore-crypto": "^3.5.0",
-    "hypergraph": "github:tibocub/hypergraph",
-    "hyperswarm": "^4.8.1"
+    "hypercore-crypto": "^3.5.0"
   },
-  "//": "hyperdns's own src/ code has zero runtime dependencies - graph, store, etc. are always dependency-injected by the caller, and networking is fully delegated to hypergraph's own graph.connectToSwarm() rather than HyperDNS requiring hyperswarm directly. corestore/hypercore-crypto/hyperswarm above are devDependencies purely for the test suite. hypergraph is not on npm yet - for local development against an unpublished/in-progress checkout, run `npm link` from that checkout, then `npm link hypergraph` here to override this entry."
+  "//": "src/'s own library code has zero runtime dependencies - graph, store, etc. are always dependency-injected by the caller, and networking is fully delegated to hypergraph's own graph.connectToSwarm() rather than HyperDNS requiring hyperswarm directly. corestore/hypergraph/hyperswarm above are real dependencies because the shell (bin/cli.js, shell/) is a genuine shipped feature that constructs them directly at runtime - the library/shell split is what stays dependency-free, not the whole package. hypercore-crypto is a devDependency purely for the test suite. hypergraph is not on npm yet - for local development against an unpublished/in-progress checkout, run `npm link` from that checkout, then `npm link hypergraph` here to override this entry."
 }

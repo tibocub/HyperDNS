@@ -1,0 +1,115 @@
+const test = require('brittle')
+const os = require('os')
+const path = require('path')
+const fs = require('fs')
+
+const { createSession } = require('../../shell/lib/session')
+
+function makeTmpBaseDir () {
+  const dir = path.join(os.tmpdir(), `hyperdns-shell-session-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`)
+  fs.mkdirSync(dir, { recursive: true })
+  return dir
+}
+
+test('session: create() then create() again for the same name resumes the SAME identity, not a fresh one', async (t) => {
+  // This is a regression test for a real bug: new Hypergraph(store) with no
+  // explicit seed generates a fresh random identity every time - nothing is
+  // automatically derived from the store's own on-disk state. A first
+  // attempt at fixing this passed only { seed }, which turned out to be
+  // insufficient on its own: graph.key (what a RoleBase registry actually
+  // checks permissions against) comes from deviceKeyPair, which defaults to
+  // a fresh random keypair regardless of seed unless passed explicitly.
+  const baseDir = makeTmpBaseDir()
+  t.teardown(() => fs.rmSync(baseDir, { recursive: true, force: true }))
+
+  const sessionA = createSession({ baseDir })
+  const first = await sessionA.create('bobsDNS')
+  const firstIdentity = first.graph.key.toString('hex')
+  await sessionA.shutdown()
+
+  const sessionB = createSession({ baseDir })
+  const second = await sessionB.create('bobsDNS')
+  const secondIdentity = second.graph.key.toString('hex')
+
+  t.ok(second.resumed, 'the second create() call recognizes this as a resume, not a fresh authority')
+  t.is(secondIdentity, firstIdentity, 'resuming produces the exact same identity, not a new random one')
+
+  await sessionB.shutdown()
+})
+
+test('session: the resumed identity actually holds the owner role in the registry, not just a matching key', async (t) => {
+  // A matching graph.key alone doesn't prove much if the RoleBase registry
+  // itself doesn't recognize it - this checks the thing that actually
+  // matters: graph.can()/the registry's own record of who the owner is.
+  const baseDir = makeTmpBaseDir()
+  t.teardown(() => fs.rmSync(baseDir, { recursive: true, force: true }))
+
+  const session = createSession({ baseDir })
+  await session.create('bobsDNS')
+  await session.shutdown()
+
+  const session2 = createSession({ baseDir })
+  const resumed = await session2.create('bobsDNS')
+  t.ok(resumed.resumed, 'resumed, not recreated')
+
+  await resumed.graph.roleBase.update()
+  const registry = await resumed.graph.roleBase.getRegistry()
+  const myKey = resumed.graph.key.toString('hex')
+
+  t.ok(registry, 'the registry is readable after resuming')
+  t.is(registry.members[myKey], 'owner', 'the resumed identity is recognized as the actual owner in the registry')
+
+  await session2.shutdown()
+})
+
+test('session: publish/resolve persist correctly across a full close and resume', async (t) => {
+  const baseDir = makeTmpBaseDir()
+  t.teardown(() => fs.rmSync(baseDir, { recursive: true, force: true }))
+
+  const session1 = createSession({ baseDir })
+  const first = await session1.create('bobsDNS')
+  await first.dns.publish('example', { type: 'A', value: '1.2.3.4' })
+  await session1.shutdown()
+
+  const session2 = createSession({ baseDir })
+  const second = await session2.create('bobsDNS')
+  const result = await second.dns.resolve('example')
+
+  t.alike(result, [{ type: 'A', value: '1.2.3.4' }], 'the published record survives a full session close and resume')
+
+  await session2.shutdown()
+})
+
+test('session: join() resumes the SAME joining identity across restarts too, not just the owner side', async (t) => {
+  const ownerBaseDir = makeTmpBaseDir()
+  const peerBaseDir = makeTmpBaseDir()
+  t.teardown(() => {
+    fs.rmSync(ownerBaseDir, { recursive: true, force: true })
+    fs.rmSync(peerBaseDir, { recursive: true, force: true })
+  })
+
+  const ownerSession = createSession({ baseDir: ownerBaseDir })
+  const owner = await ownerSession.create('bobsDNS')
+
+  const peerSession1 = createSession({ baseDir: peerBaseDir })
+  const peerFirst = await peerSession1.join(JSON.stringify(owner.descriptor))
+  const peerFirstIdentity = peerFirst.graph.key.toString('hex')
+  await peerSession1.shutdown()
+
+  const peerSession2 = createSession({ baseDir: peerBaseDir })
+  const peerSecond = await peerSession2.join(JSON.stringify(owner.descriptor))
+  const peerSecondIdentity = peerSecond.graph.key.toString('hex')
+
+  t.is(peerSecondIdentity, peerFirstIdentity, "the joining peer's identity is also stable across restarts")
+
+  await ownerSession.shutdown()
+  await peerSession2.shutdown()
+})
+
+test('session: requireCurrent() throws a clear error when nothing has been created or joined yet', async (t) => {
+  const baseDir = makeTmpBaseDir()
+  t.teardown(() => fs.rmSync(baseDir, { recursive: true, force: true }))
+
+  const session = createSession({ baseDir })
+  t.exception(() => session.requireCurrent(), /no authority loaded/)
+})

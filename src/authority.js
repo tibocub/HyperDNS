@@ -165,4 +165,4 @@ async function joinAuthority (descriptor, opts = {}) {
   return result
 }
 
-module.exports = { createAuthority, joinAuthority }
+module.exports = { createAuthority, joinAuthority, attachConnect, CONTEXT_LABEL }
