@@ -222,3 +222,23 @@ HyperDNS ships a shell — a single long-running process with commands (`create`
 - `corestore`/`hypergraph`/`hyperswarm` moved from `devDependencies` to real `dependencies` (plus `ansi-colors`/`shell-quote`, new) — the shell is a genuine shipped feature that constructs these at runtime, unlike `src/`'s library code, which stays fully dependency-injected
 - `.hyperdns/` (Corestore data, descriptors, and the private identity seed) is gitignored
 - See `test/brittle/shell-session.js` for regression coverage of the identity-stability bugs specifically (resume produces the same identity and the same recognized owner role, both for the creating side and a joining peer) and the persistence flow (publish survives a full close and resume)
+
+---
+
+## 2026-08-03 — Fixed: owner and a locally-joined peer of the same authority collided on disk
+
+### Decision
+
+Local storage is now split into `.hyperdns/owned/<name>/` (authorities this identity created) and `.hyperdns/joined/<name>/` (authorities it's a member of), instead of one `.hyperdns/<name>/` keyed purely by the human-chosen authority name.
+
+### Rationale
+
+- Reported directly: trying to `join` an authority's descriptor while that authority's own owner session was still running on the same machine failed with a storage-engine file lock error, not a slow convergence issue — a hard failure every time
+- Root cause: `create()` and `join()` both computed their storage directory as `.hyperdns/<name>/`, so an owner's `create test2` and a local peer's `join .../test2/descriptor.json` tried to open the exact same Corestore at once — two different local identities, one directory
+- This isn't only a same-machine-testing problem: authority names aren't guaranteed globally unique at all, so the same flaw could let two genuinely different authorities that happen to share a name collide on disk even without ever testing owner+peer together locally
+
+### Consequences
+
+- Added `assertNotNameCollision()`: if `join()` finds existing local data under a name but with a different RoleBase key (a different actual authority), it refuses rather than silently reusing/overwriting the wrong local state
+- `join()` also gives a clear error now when given something that's neither an existing file path nor valid JSON, instead of a confusing raw `JSON.parse` failure
+- See `test/brittle/shell-session.js` for regression coverage: owner + local peer no longer collide even with the owner's session still open, and a genuine name collision between two different authorities is refused

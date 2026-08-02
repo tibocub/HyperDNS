@@ -63,14 +63,46 @@ function graphOptsForSeed (seed) {
   return { seed, deviceKeyPair: hypercoreCrypto.keyPair(seed) }
 }
 
+// Owned (authorities this identity created) and joined (authorities this
+// identity is a member of) are kept in separate namespaces. Without this,
+// an owner running "create test2" and a local peer running "join
+// .../test2/descriptor.json" on the SAME machine would both resolve to
+// the same directory (.hyperdns/test2/) purely because they share a human-
+// chosen name - two different local identities trying to open the same
+// Corestore at once, which fails outright (the storage engine locks its
+// files per-process). This isn't just a testing-on-one-machine edge case:
+// authority names aren't guaranteed unique at all, so this also protects
+// against two genuinely different authorities you've joined/created
+// colliding on disk.
+function authorityDir (baseDir, bucket, name) {
+  return path.join(baseDir, bucket, sanitizeName(name))
+}
+
+// Even within one bucket, a name collision between two DIFFERENT actual
+// authority instances (different RoleBase key) that happen to share a
+// human-chosen name must not silently reuse/overwrite the wrong local data.
+function assertNotNameCollision (existing, descriptor, name) {
+  if (existing && existing.roleBaseKey !== descriptor.roleBaseKey) {
+    throw new Error(
+      `local data for an authority named "${name}" already exists but is a different authority ` +
+      '(different RoleBase key) - this is a name collision, not the same one. Remove or rename ' +
+      'the existing local data under .hyperdns/ if you meant to replace it.'
+    )
+  }
+}
+
 /**
  * Manages the shell's single "current authority" for the lifetime of one
  * shell process - create/resume one, join one, publish/resolve against it,
  * connect it, and shut it down cleanly on exit. Every authority the shell
- * creates or joins is saved under `.hyperdns/<name>/` (Corestore data plus
- * the descriptor needed to reopen it), so relaunching the shell and running
- * `create <name>` or `join` again for the same authority resumes it rather
- * than starting over.
+ * creates is saved under `.hyperdns/owned/<name>/`, and every one it joins
+ * under `.hyperdns/joined/<name>/` (Corestore data plus the descriptor
+ * needed to reopen it) - kept separate so an owner and a locally-joined
+ * peer of the same authority never try to open the same Corestore at once,
+ * and so two different authorities that happen to share a human-chosen
+ * name don't collide either (see assertNotNameCollision above). Relaunching
+ * the shell and running `create <name>` or `join` again for the same
+ * authority resumes it rather than starting over.
  */
 function createSession (opts = {}) {
   const baseDir = opts.baseDir || path.join(process.cwd(), '.hyperdns')
@@ -95,7 +127,7 @@ function createSession (opts = {}) {
   async function create (name, opts = {}) {
     await closeCurrent()
 
-    const dir = path.join(baseDir, sanitizeName(name))
+    const dir = authorityDir(baseDir, 'owned', name)
     const store = new Corestore(path.join(dir, 'store'))
     const seed = loadOrCreateIdentitySeed(dir)
     const existing = loadDescriptor(dir)
@@ -134,13 +166,23 @@ function createSession (opts = {}) {
     if (fs.existsSync(descriptorArg)) {
       descriptor = JSON.parse(fs.readFileSync(descriptorArg, 'utf8'))
     } else {
-      descriptor = JSON.parse(descriptorArg)
+      try {
+        descriptor = JSON.parse(descriptorArg)
+      } catch {
+        throw new Error(
+          `"${descriptorArg}" is neither an existing file path nor a valid JSON descriptor. ` +
+          'join expects a path to a descriptor.json file (or the JSON itself) - ask the ' +
+          'authority\'s owner to share theirs (their shell\'s "descriptor" command prints it).'
+        )
+      }
     }
 
     const name = descriptor.authority
-    const dir = path.join(baseDir, sanitizeName(name))
+    const dir = authorityDir(baseDir, 'joined', name)
     const store = new Corestore(path.join(dir, 'store'))
     const seed = loadOrCreateIdentitySeed(dir)
+    const existing = loadDescriptor(dir)
+    assertNotNameCollision(existing, descriptor, name)
 
     const result = await joinAuthority(descriptor, { store, graphOpts: graphOptsForSeed(seed) })
     saveDescriptor(dir, result.descriptor)

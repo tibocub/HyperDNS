@@ -113,3 +113,51 @@ test('session: requireCurrent() throws a clear error when nothing has been creat
   const session = createSession({ baseDir })
   t.exception(() => session.requireCurrent(), /no authority loaded/)
 })
+
+test('session: create() and join() for the same authority name do not collide on disk, even while both are open at once', async (t) => {
+  // Regression test: create() and join() used to both key their storage
+  // directory purely by authority name (.hyperdns/<name>/) - an owner
+  // running "create test2" and a local peer running "join .../test2/
+  // descriptor.json" on the same machine would try to open the exact same
+  // Corestore at once, which fails outright (the storage engine locks its
+  // files per-process, so this isn't just a slow-to-converge race - it's a
+  // hard failure every time).
+  const baseDir = makeTmpBaseDir()
+  t.teardown(() => fs.rmSync(baseDir, { recursive: true, force: true }))
+
+  const ownerSession = createSession({ baseDir })
+  const owner = await ownerSession.create('test2')
+  // Deliberately NOT shut down - simulates the owner's session still being
+  // open (holding its lock) while a local peer tries to join.
+
+  const peerSession = createSession({ baseDir })
+  const peer = await peerSession.join(JSON.stringify(owner.descriptor))
+
+  t.not(owner.dir, peer.dir, "the owner's and the peer's local storage directories are different")
+  t.ok(fs.existsSync(owner.dir), "the owner's directory exists")
+  t.ok(fs.existsSync(peer.dir), "the peer's directory exists")
+
+  await ownerSession.shutdown()
+  await peerSession.shutdown()
+})
+
+test('session: join() refuses to reuse local data for a different authority that happens to share a name', async (t) => {
+  const baseDir = makeTmpBaseDir()
+  t.teardown(() => fs.rmSync(baseDir, { recursive: true, force: true }))
+
+  const ownerSession = createSession({ baseDir })
+  const authorityA = await ownerSession.create('sharedname')
+  await ownerSession.shutdown()
+
+  const peerSession1 = createSession({ baseDir })
+  await peerSession1.join(JSON.stringify(authorityA.descriptor))
+  await peerSession1.shutdown()
+
+  const peerSession2 = createSession({ baseDir })
+  const differentAuthority = { ...authorityA.descriptor, roleBaseKey: 'f'.repeat(65) }
+  await t.exception(
+    () => peerSession2.join(JSON.stringify(differentAuthority)),
+    /name collision/,
+    'joining a different authority with a colliding name is refused, not silently mixed with the first'
+  )
+})
