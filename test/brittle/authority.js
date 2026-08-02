@@ -104,3 +104,56 @@ test('createAuthority()/joinAuthority() require opts.store', async (t) => {
   await t.exception(() => createAuthority('bobsDNS'), 'createAuthority throws without opts.store')
   await t.exception(() => joinAuthority({ authority: 'bobsDNS', roleBaseKey: 'a'.repeat(64), contexts: [{ key: 'b'.repeat(64) }] }), 'joinAuthority throws without opts.store')
 })
+
+test('resolve() works on a joined peer WITHOUT the caller manually updating roleBase first', async (t) => {
+  // Regression test for a real bug: resolve() only ever called
+  // graph.update() - never graph.roleBase.update(). RoleBase is its own
+  // separate Autobase (own replication, own view); graph.can() (resolve()'s
+  // permission gate) reads its registry directly with no update of its
+  // own. So on a peer that had genuinely joined and genuinely replicated
+  // real data, resolve() could still silently return zero records - not
+  // because nothing replicated, but because the permission check was
+  // evaluated against a stale local view of who holds dns.publish. This
+  // looked identical to "replication isn't working" from the outside.
+  //
+  // Every existing test that exercised cross-peer resolve() happened to
+  // call `await member.graph.roleBase.update()` manually right before
+  // resolve() - which is exactly why this shipped uncaught: the tests were
+  // inadvertently doing resolve()'s job for it. This test deliberately
+  // does NOT do that, to actually prove resolve() is self-sufficient now.
+  const dirOwner = makeTmp('hyperdns-authority-owner-noupdate')
+  const dirMember = makeTmp('hyperdns-authority-member-noupdate')
+
+  const storeOwner = new Corestore(dirOwner)
+  const storeMember = new Corestore(dirMember)
+
+  const owner = await createAuthority('bobsDNS', { store: storeOwner })
+  const repl = replicatePair(storeOwner, storeMember)
+
+  t.teardown(async () => {
+    repl.close()
+    await Promise.allSettled([
+      owner.graph.close(),
+      storeOwner.close(),
+      storeMember.close()
+    ])
+    fs.rmSync(dirOwner, { recursive: true, force: true })
+    fs.rmSync(dirMember, { recursive: true, force: true })
+  })
+
+  const wireDescriptor = JSON.parse(JSON.stringify(owner.descriptor))
+  const member = await joinAuthority(wireDescriptor, { store: storeMember })
+  t.teardown(async () => { await member.graph.close() })
+
+  await owner.dns.publish('example', { type: 'A', value: '9.9.9.9' })
+  await owner.graph.update()
+
+  const replicated = await waitFor(async () => {
+    await member.graph.update()
+    // Deliberately no member.graph.roleBase.update() call here.
+    const r = await member.dns.resolve('example')
+    return Array.isArray(r) && r.length === 1 ? r : null
+  })
+
+  t.alike(replicated, [{ type: 'A', value: '9.9.9.9' }], "resolve() resolves the owner's published record correctly, with no help from the caller updating roleBase first")
+})

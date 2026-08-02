@@ -263,3 +263,22 @@ Local storage is now split into `.hyperdns/owned/<name>/` (authorities this iden
 - See `test/brittle/shell-session.js`: a fast, non-network regression test checks the actual invariant directly (`session.get()` is reference-equal to what `create()`/`join()` returned, and mutating `.network` on that object is immediately visible via `session.get()`) rather than waiting on a real, possibly slow network connection to prove it
 - Also added: `create`/`join` reject a name containing a path separator or whitespace with a clear error, instead of silently mangling it into a confusing local directory name (a real mistake made while testing this) — see the same test file
 - Added `docs/SHELL_GUIDE.md`, linked from the README: covers the single-current-authority model (testing two peers needs two separate shell processes, not one juggling both), `create`/`join` naming, `connect`'s realistic timing expectations, `status`'s fields, and the on-disk layout
+
+---
+
+## 2026-08-05 — Fixed: `resolve()` never updated RoleBase's own (separate) Autobase
+
+### Decision
+
+`resolve()` now calls `await graph.roleBase.update()` in addition to `await graph.update()`.
+
+### Rationale
+
+- Reported directly: with both peers genuinely showing "online" (a real network connection, confirmed by `status`), a joining peer could still resolve zero records for a name the owner had genuinely published — while the owner resolved it fine locally
+- Root cause: RoleBase is its own separate Autobase (own replication, own materialized view) — `graph.update()` only refreshes the main graph/context view. `graph.can()` (the permission gate `resolve()` uses to decide whether to honor a domain claim) reads the RoleBase registry directly, with no update call of its own. So a peer's local view of "who currently holds `dns.publish`" could stay stale even after the underlying data had genuinely replicated over the wire — the domain claim gets silently excluded, which is indistinguishable from "nothing replicated" from the outside, but is actually "replicated, just not applied to this specific view yet"
+- Every existing test exercising cross-peer `resolve()` happened to call `roleBase.update()` manually right before invoking it — which is exactly why this shipped uncaught. The tests were unintentionally doing `resolve()`'s job for it
+
+### Consequences
+
+- `resolve()` is now self-sufficient — a caller doesn't need to know to separately update the RoleBase before calling it, which matters a lot for the shell (`shell/builtins/index.js`'s `resolve` command was calling `dns.resolve()` directly, with no such workaround)
+- Added `test/brittle/authority.js`: a new test deliberately does *not* call `roleBase.update()` manually before `resolve()`, to actually prove the fix rather than re-exercising the same masked path as the existing tests

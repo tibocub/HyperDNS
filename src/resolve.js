@@ -38,6 +38,18 @@ async function resolve (name, opts = {}) {
   // single context", not just a caller convention.
   await graph.update()
 
+  // RoleBase is its own separate Autobase (own replication, own view) -
+  // graph.update() does not touch it, and graph.can() reads its registry
+  // directly with no update of its own. Without this, a peer that just
+  // joined and replicated real data could still have every domain claim
+  // silently excluded below (graph.can() evaluating against a stale local
+  // view of who holds claimPermission), which looks identical to "nothing
+  // replicated" but is actually "replicated, just not applied to this view
+  // yet" - confirmed directly: this was the actual cause of a joining peer
+  // seeing zero records for names the owner had genuinely published and
+  // that had genuinely replicated.
+  await graph.roleBase.update()
+
   const tag = `name:${name}`
 
   const candidateDomains = []
