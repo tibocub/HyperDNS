@@ -282,3 +282,25 @@ Local storage is now split into `.hyperdns/owned/<name>/` (authorities this iden
 
 - `resolve()` is now self-sufficient — a caller doesn't need to know to separately update the RoleBase before calling it, which matters a lot for the shell (`shell/builtins/index.js`'s `resolve` command was calling `dns.resolve()` directly, with no such workaround)
 - Added `test/brittle/authority.js`: a new test deliberately does *not* call `roleBase.update()` manually before `resolve()`, to actually prove the fix rather than re-exercising the same masked path as the existing tests
+
+---
+
+## 2026-08-06 — Settled the address format: `[hyperdns://]<name>@<authority>[/<path>]`
+
+### Decision
+
+`name@authority` (mailbox-first, matching real email convention) is the settled address order — not `authority@name`, which had drifted into `README.md` and `docs/REPLICATION.md`'s examples but was never actually implemented that way. Added support for an optional trailing path, deliberately left opaque (never parsed or interpreted by HyperDNS itself).
+
+### Rationale
+
+- `src/address.js`'s `parseAddress`/`resolveAddress` were already implemented and tested as `name@authority` from early on. Two docs had drifted to the opposite order in their examples, apparently inspired by real DNS's own right-to-left specificity (`blog.example.com` reads root→leaf), but that was never reconciled with the actual code, and was never explicitly decided anywhere
+- A third doc (`docs/NETWORKING.md`) had sketched a completely different, slash-based scheme (`hyper://myDNS/my-blog/post/23`, no `@` at all) for addressing something more specific under an authority. Removed outright — it would collide with hypergraph's own entity-addressing shape (`type/authorCoreKeyHex/seq`) instead of being able to embed it directly
+- The trailing path exists specifically so two different, real consumers can both use it validly without HyperDNS imposing a structure that would break one of them: hypergraph's own entity ids (`forum@my-dns/post/1a0e.../8`) and an application's own dynamic routing (HyperBBS's planned `forum@my-dns/posts` to list a forum's posts). `resolveAddress()` now returns `{ records, path }` instead of a bare array, so a caller gets everything needed to keep going
+
+### Consequences
+
+- `resolveAddress()`'s return shape changed from a bare array to `{ records, path }` — a breaking change, but the only pre-existing callers were its own tests (no other code depended on the old shape)
+- `parseAddress()` also now accepts an optional, case-insensitive `hyperdns://` scheme prefix
+- New `docs/ADDRESSING.md` is the settled, authoritative reference for the grammar; `README.md`, `docs/REPLICATION.md`, and `docs/NETWORKING.md` all updated to match it (or point to it) rather than each carrying their own stale example
+- `docs/ADDRESSING.md` also records a few real-DNS concepts relevant to HyperDNS's future (CNAME/aliasing as a natural future record `type`, delegation being out of scope, TTL already present but unused, case-sensitivity undecided) — not implemented now, just written down so they're not re-discovered from scratch later
+- See `test/brittle/address.js` for the updated/new coverage (scheme prefix, path parsing, the new return shape, and the corrected understanding that a slash right after `@` always starts the path by definition — it's not possible for the authority itself to "contain" one that needs rejecting)

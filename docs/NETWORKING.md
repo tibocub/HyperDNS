@@ -19,20 +19,14 @@ library, HyperDNS does not need to change at all — it only ever calls `graph.c
 HyperDNS resolution is authority-scoped.
 
 An authority is selected explicitly by the caller. Names and records are resolved within that
-authority.
+authority. The address grammar itself (`name@authority`, plus an optional opaque trailing path)
+is settled in **`docs/ADDRESSING.md`** — this doc only needs the fact that a stable `authority`
+string exists, since that's what topic derivation below is keyed on.
 
-This project assumes an authority-addressed scheme like:
-
-- `hyper://<authority>/<namespace>/<path>`
-
-Examples:
-
-- `hyper://myDNS/my-blog/post/23`
-
-Notes:
-
-- The concrete URL grammar is an application concern (browser/CLI), but the networking model
-  below assumes the existence of a stable `authority` string.
+An earlier draft of this section proposed a different, slash-based scheme
+(`hyper://<authority>/<namespace>/<path>`, no `@` at all). It's gone — it would have collided
+with hypergraph's own `type/author/seq` entity-addressing shape instead of being able to embed
+it directly. See `docs/ADDRESSING.md` for the reasoning.
 
 ## Authority discovery
 

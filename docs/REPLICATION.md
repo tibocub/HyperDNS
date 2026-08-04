@@ -4,7 +4,7 @@ HyperDNS operates on an eventually consistent graph.
 
 ## Authority scope
 
-- Resolution is scoped to a single DNS authority (instance) selected explicitly by the caller (e.g. `myDNS@my-blog`).
+- Resolution is scoped to a single DNS authority (instance) selected explicitly by the caller (e.g. `my-blog@myDNS` - see `docs/ADDRESSING.md`).
 - A HyperDNS authority is independently addressable and discoverable.
 - Authorities MUST NOT be mixed during resolution unless explicitly federated/composed.
 

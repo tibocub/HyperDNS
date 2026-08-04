@@ -14,14 +14,52 @@ function makeTmp (prefix) {
 }
 
 test('parseAddress parses and normalizes whitespace', async (t) => {
-  t.alike(parseAddress('bobs-blog@bobsDNS'), { name: 'bobs-blog', dns: 'bobsDNS' })
-  t.alike(parseAddress('  a  @  b  '), { name: 'a', dns: 'b' })
+  t.alike(parseAddress('bobs-blog@bobsDNS'), { name: 'bobs-blog', dns: 'bobsDNS', path: null })
+  t.alike(parseAddress('  a  @  b  '), { name: 'a', dns: 'b', path: null })
 
   t.exception(() => parseAddress('abc'), 'Invalid address format')
   t.exception(() => parseAddress('a@b@c'), 'Invalid address format')
   t.exception(() => parseAddress('@dns'), 'Invalid address format')
   t.exception(() => parseAddress('name@'), 'Invalid address format')
   t.exception(() => parseAddress(' @ '), 'Invalid address format')
+})
+
+test('parseAddress accepts an optional hyperdns:// scheme prefix', async (t) => {
+  t.alike(parseAddress('hyperdns://bobs-blog@bobsDNS'), { name: 'bobs-blog', dns: 'bobsDNS', path: null })
+  t.alike(parseAddress('HYPERDNS://bobs-blog@bobsDNS'), { name: 'bobs-blog', dns: 'bobsDNS', path: null }, 'the scheme prefix is case-insensitive')
+})
+
+test('parseAddress carries a trailing path through untouched, without ever interpreting it', async (t) => {
+  // The path is deliberately opaque - it exists to let hypergraph's own
+  // entity addressing (type/author/seq) and an app's own dynamic routing
+  // (e.g. HyperBBS's own "list all posts" route) both use it validly,
+  // without HyperDNS imposing any structure of its own on it.
+  t.alike(
+    parseAddress('forum@my-dns/post/1a0e0f168ab42de514f92cb95bd640ac599c43af9efbde0a14c81faa16bb0fe8/8'),
+    { name: 'forum', dns: 'my-dns', path: 'post/1a0e0f168ab42de514f92cb95bd640ac599c43af9efbde0a14c81faa16bb0fe8/8' },
+    'a hypergraph-style entity path is carried through as one opaque string'
+  )
+  t.alike(
+    parseAddress('forum@my-dns/posts'),
+    { name: 'forum', dns: 'my-dns', path: 'posts' },
+    "an app's own single-segment route is carried through just as validly"
+  )
+  t.alike(
+    parseAddress('hyperdns://forum@my-dns/post/1a0e.../8'),
+    { name: 'forum', dns: 'my-dns', path: 'post/1a0e.../8' },
+    'works the same with the scheme prefix present'
+  )
+  t.alike(parseAddress('forum@my-dns/'), { name: 'forum', dns: 'my-dns', path: null }, 'a trailing slash with nothing after it is no path at all, not an empty string')
+})
+
+test('parseAddress rejects whitespace inside name, and a path separator before the authority even starts', async (t) => {
+  t.exception(() => parseAddress('fo/rum@my-dns'), 'Invalid address format')
+  t.exception(() => parseAddress('fo rum@my-dns'), 'Invalid address format')
+  // A slash right after '@' always starts the path by definition (that's
+  // the whole grammar) - there's no way for the authority itself to
+  // "contain" a slash that would need rejecting; this is a legitimate
+  // parse, not an error.
+  t.alike(parseAddress('forum@my/dns'), { name: 'forum', dns: 'my', path: 'dns' })
 })
 
 test('resolveAddress works with HyperDNS instance client', async (t) => {
@@ -64,7 +102,40 @@ test('resolveAddress works with HyperDNS instance client', async (t) => {
   })
 
   t.alike(r1, r2)
-  t.alike(r1, expected)
+  t.alike(r1, { records: expected, path: null })
+})
+
+test('resolveAddress returns the trailing path alongside the resolved records, unmodified', async (t) => {
+  const tmpDir = makeTmp('hyperdns-test-resolveAddress-path')
+
+  const store = new Corestore(tmpDir)
+  const graph = new Hypergraph(store)
+  await graph.ready()
+
+  t.teardown(async () => {
+    await graph.close()
+    await store.close()
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  const author = graph.key.toString('hex')
+  await graph.createRoleBase()
+  await graph.roleBase.init(author)
+  const context = await graph.createContext()
+  await graph.openContext(context)
+
+  const dns = createDNS({ graph, context })
+  await dns.publish('forum', { type: 'hyper', value: 'hyper://abc123' })
+  await graph.update()
+
+  const result = await resolveAddress('forum@localDNS/posts', {
+    getAuthorityClient: async () => dns
+  })
+
+  t.alike(result, {
+    records: [{ type: 'hyper', value: 'hyper://abc123' }],
+    path: 'posts'
+  })
 })
 
 test('resolveAddress works with raw graph/context client', async (t) => {
@@ -102,7 +173,7 @@ test('resolveAddress works with raw graph/context client', async (t) => {
   })
 
   t.alike(r1, r2)
-  t.alike(r1, expected)
+  t.alike(r1, { records: expected, path: null })
 })
 
 test('resolveAddress errors are deterministic', async (t) => {
@@ -170,6 +241,6 @@ test('resolveAddress routes independently by authority (no accidental reuse)', a
   const r1 = await resolveAddress('example@dns1', { getAuthorityClient })
   const r2 = await resolveAddress('example@dns2', { getAuthorityClient })
 
-  t.alike(r1, [{ type: 'A', value: '1.1.1.1' }])
-  t.alike(r2, [{ type: 'A', value: '2.2.2.2' }])
+  t.alike(r1, { records: [{ type: 'A', value: '1.1.1.1' }], path: null })
+  t.alike(r2, { records: [{ type: 'A', value: '2.2.2.2' }], path: null })
 })

@@ -11,9 +11,11 @@ Central authority sucks, but making a community-based DNS breaks a bit the purpo
 a resource easy to access. So joining manually a HyperDNS community to be able to reach its addresses doesn't sound optimal.
 
 We can still manage to make a kinda universal source of truth without trusting everyone by making hyperDNS instances
-able to talk to each others like email servers or the fediverse. If a hyperDNS address is composed of the DNS 
-address + it's domain name. For example **"hyper://bobsDNS@blog.bob"** would resolve to the dns record of **"blog.bob"**
-into the **"bobsDNS"** hyperDNS instance.
+able to talk to each others like email servers or the fediverse. A hyperDNS address is composed of the record
+name + the DNS instance to resolve it from - the same order as an email address (mailbox first, domain second).
+For example **"hyper://blog@bobsDNS"** would resolve the record named **"blog"** within the **"bobsDNS"**
+hyperDNS instance. See `docs/ADDRESSING.md` for the full grammar (including an optional trailing path, for
+addressing something more specific within whatever the resolved record points to).
 
 - DNS addresses are derived from their name so they are deterministic and immutable (so no need for a public record of DNS addresses)
 - users can join and create hyperDNS instances, which replicates locally all their records
@@ -82,6 +84,7 @@ time), and `connect` can genuinely take a while with nobody else around to conne
 - docs/INVARIANTS.md
 - docs/REPLICATION.md
 - docs/NETWORKING.md
+- docs/ADDRESSING.md
 - docs/SHELL_GUIDE.md
 - DECISIONS.md
 - WORKFLOW.md
