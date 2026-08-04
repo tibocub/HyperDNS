@@ -1,4 +1,5 @@
 const c = require('ansi-colors')
+const { parseAddress } = require('../../src/address')
 
 /**
  * Every command is `{ fn(args), help }` - `help` is the one-line description
@@ -158,21 +159,42 @@ function createBuiltins (session) {
 
     resolve: {
       async fn (args) {
-        const [name] = args
-        if (!name) throw new Error('usage: resolve <name>')
+        const [input] = args
+        if (!input) throw new Error('usage: resolve <name> | resolve <name@authority>')
 
         const current = session.requireCurrent()
+
+        let name, dns, path
+        if (input.includes('@')) {
+          ({ name, dns, path } = parseAddress(input))
+        } else {
+          name = input
+          dns = null
+          path = null
+        }
+
+        if (dns && dns !== current.name) {
+          throw new Error(
+            `"${input}" refers to a different authority ("${dns}") than the one currently loaded ("${current.name}"). ` +
+            'Resolving from an authority you have not joined is not supported yet - "join" it first ' +
+            '(see "join <path-to-descriptor.json>"), then resolve from within it.'
+          )
+        }
+
         const records = await current.dns.resolve(name)
 
         if (records.length === 0) {
-          console.log(c.dim(`no records found for "${name}"`))
+          console.log(c.dim(`no records found for "${input}"`))
           return
         }
         for (const record of records) {
           console.log(`  ${record.type}  ${record.value}${record.ttl !== undefined ? c.dim(`  (ttl: ${record.ttl})`) : ''}`)
         }
+        if (path) {
+          console.log(c.dim(`  (trailing path "${path}" is not interpreted by HyperDNS itself - see docs/ADDRESSING.md)`))
+        }
       },
-      help: 'Resolve a name on the current authority: resolve <name>'
+      help: 'Resolve a name, or a full name@authority address, on the current authority: resolve <name>[@authority][/path]'
     }
   }
 

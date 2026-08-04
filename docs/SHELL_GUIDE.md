@@ -89,6 +89,23 @@ real, bigger feature (see `docs/NETWORKING.md`'s "Mode B: Query mode") that isn'
 - Check `status` afterward — `network: online (N connection(s))` is what actually tells you
   whether a peer was found, not just whether `connect` finished.
 
+## `resolve` — bare names vs. full addresses
+
+`resolve` accepts either a bare record name (resolved on whatever authority is currently
+loaded) or a full `name@authority` address (see `docs/ADDRESSING.md` for the full grammar,
+including an optional trailing path):
+
+```
+hyperdns:testdns (online) > resolve testrec
+  hyper  hyper://123abc
+hyperdns:testdns (online) > resolve testrec@testdns
+  hyper  hyper://123abc
+```
+
+Right now, `resolve name@authority` only works if `authority` is the one currently loaded (you
+get a clear error otherwise) — resolving from an authority you haven't `join`ed yet isn't built
+yet (see `docs/NETWORKING.md`'s "Mode B: Query mode").
+
 ## `status` field reference
 
 ```

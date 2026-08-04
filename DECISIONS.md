@@ -304,3 +304,22 @@ Local storage is now split into `.hyperdns/owned/<name>/` (authorities this iden
 - New `docs/ADDRESSING.md` is the settled, authoritative reference for the grammar; `README.md`, `docs/REPLICATION.md`, and `docs/NETWORKING.md` all updated to match it (or point to it) rather than each carrying their own stale example
 - `docs/ADDRESSING.md` also records a few real-DNS concepts relevant to HyperDNS's future (CNAME/aliasing as a natural future record `type`, delegation being out of scope, TTL already present but unused, case-sensitivity undecided) — not implemented now, just written down so they're not re-discovered from scratch later
 - See `test/brittle/address.js` for the updated/new coverage (scheme prefix, path parsing, the new return shape, and the corrected understanding that a slash right after `@` always starts the path by definition — it's not possible for the authority itself to "contain" one that needs rejecting)
+
+---
+
+## 2026-08-07 — Fixed: the shell's `resolve` command never actually used `parseAddress()`
+
+### Decision
+
+`shell/builtins/index.js`'s `resolve` command now parses its input with `parseAddress()` when it contains `@`, resolving `name` against the currently-loaded authority (erroring clearly if the address names a different one) — rather than passing the raw string straight through as a literal record name.
+
+### Rationale
+
+- Reported directly: `resolve testrec@testdns` returned "no records found" even with `testrec` genuinely published and resolvable via a bare `resolve testrec` in the very same session
+- Root cause: the address format itself (`src/address.js`) was implemented and tested in the previous round, but the shell's `resolve` command was never actually updated to call it — `"testrec@testdns"` was passed to `dns.resolve()` as a literal name, which obviously doesn't match anything. Not a bug in the new address parsing/resolution logic itself, just a missing integration — the address code's own tests never exercised the shell at all
+
+### Consequences
+
+- `resolve <name>` (bare name, unchanged) and `resolve <name@authority>` (matching the currently-loaded authority) both work now; `resolve <name@somewhere-else>` gives a clear, explicit error rather than a misleading empty result
+- A trailing path, if present, is surfaced to the user (not silently dropped) with an explicit note that HyperDNS itself doesn't interpret it
+- See `test/brittle/shell-builtins.js` (new): exercises the actual builtin functions directly (`createBuiltins()` is a plain factory, no readline/stdin piping needed), including a test proving the exact regression (a matching address resolves, not "no records found")
