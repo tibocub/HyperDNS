@@ -38,16 +38,22 @@ async function resolve (name, opts = {}) {
   // single context", not just a caller convention.
   await graph.update()
 
-  // RoleBase is its own separate Autobase (own replication, own view) -
-  // graph.update() does not touch it, and graph.can() reads its registry
-  // directly with no update of its own. Without this, a peer that just
-  // joined and replicated real data could still have every domain claim
-  // silently excluded below (graph.can() evaluating against a stale local
-  // view of who holds claimPermission), which looks identical to "nothing
-  // replicated" but is actually "replicated, just not applied to this view
-  // yet" - confirmed directly: this was the actual cause of a joining peer
-  // seeing zero records for names the owner had genuinely published and
-  // that had genuinely replicated.
+  // REDUNDANT, kept defensively. This line's original comment claimed that
+  // "graph.update() does not touch RoleBase" - that is FALSE and has been since
+  // hypergraph's first commit: hypergraph's update() calls
+  // `if (this.#roleBase) await this.#roleBase.update()` (src/hypergraph.js,
+  // in update(), right before scopeBase and the open contexts). Verified
+  // 2026-09-10 against the current checkout.
+  //
+  // The BUG the old comment described was real - a freshly-joined peer seeing
+  // zero records for names that had genuinely replicated, because graph.can()
+  // evaluated against a stale view of who holds claimPermission - but the cause
+  // was misattributed to RoleBase being un-updated. Don't chase that explanation
+  // if the symptom returns; the roleBase IS updated by the line above.
+  //
+  // Left in place because it is harmless and cheap, and because graph.can()
+  // below depends on a fresh registry. If you remove it, the await above must
+  // stay.
   await graph.roleBase.update()
 
   const tag = `name:${name}`

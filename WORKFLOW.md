@@ -1,3 +1,15 @@
+> ## ⚠ LEGACY — DO NOT FOLLOW THIS FILE
+>
+> Superseded by **`CLAUDE.md`** and **`.specify/memory/constitution.md`**. Kept only as
+> historical record. Specifically:
+>
+> - The **"LLM Instructions"** block below and the **Windsurf `PROMPT_TEMPLATE`** are obsolete
+>   and contradict `CLAUDE.md`. `CLAUDE.md` wins.
+> - The **ROADMAP** section below is **stale**: it lists Hyperswarm networking, multi-peer sync,
+>   federation, and moderation rules as future work. All of those shipped. The real roadmap is
+>   `README.md`'s "Goals" section.
+> - Process rules that were actually load-bearing were moved into the constitution.
+
 ## WORKFLOW.md
 
 ### Purpose
