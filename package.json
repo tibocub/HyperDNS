@@ -15,7 +15,7 @@
   "dependencies": {
     "ansi-colors": "^4.1.3",
     "corestore": "^7.0.0",
-    "hypergraph": "github:tibocub/hypergraph",
+    "hypergraph": "file:../hypergraph",
     "hyperswarm": "^4.8.1",
     "shell-quote": "^1.8.3"
   },
@@ -23,5 +23,5 @@
     "brittle": "^3.0.0",
     "hypercore-crypto": "^3.5.0"
   },
-  "//": "src/'s own library code has zero runtime dependencies - graph, store, etc. are always dependency-injected by the caller, and networking is fully delegated to hypergraph's own graph.connectToSwarm() rather than HyperDNS requiring hyperswarm directly. corestore/hypergraph/hyperswarm above are real dependencies because the shell (bin/cli.js, shell/) is a genuine shipped feature that constructs them directly at runtime - the library/shell split is what stays dependency-free, not the whole package. hypercore-crypto is a devDependency purely for the test suite. hypergraph is not on npm yet - for local development against an unpublished/in-progress checkout, run `npm link` from that checkout, then `npm link hypergraph` here to override this entry."
+  "//": "src/'s own library code has zero runtime dependencies - graph, store, etc. are always dependency-injected by the caller, and networking is fully delegated to hypergraph's own graph.connectToSwarm() rather than HyperDNS requiring hyperswarm directly. corestore/hypergraph/hyperswarm above are real dependencies because the shell (bin/cli.js, shell/) is a genuine shipped feature that constructs them directly at runtime - the library/shell split is what stays dependency-free, not the whole package. hypercore-crypto is a devDependency purely for the test suite. hypergraph is not on npm yet, so it is declared as file:../hypergraph - npm install links this repo to the sibling checkout, so it always runs current hypergraph rather than a copy (npm 12 also blocks git dependencies by default). The hypergraph checkout must sit next to this repo."
 }

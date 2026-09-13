@@ -39,7 +39,7 @@ hyperDNS is one of five sibling P2P projects under `E:\Code\P2P\`. **Canonical m
   bulk file transfer; unrelated to naming.
 
 Dependency direction is one-way: hypergraph knows nothing about hyperDNS. Breaking changes there
-land here instantly via the symlink (see the `npm ci` warning above).
+land here instantly through the link (see "How hypergraph is installed here" below).
 
 ## Spec-kit workflow
 
@@ -57,27 +57,21 @@ The **private authorities** feature is mid-flight in the working tree as of this
 `shell/builtins/index.js`, plus new `docs/PRIVACY.md` and `test/brittle/authority-private.js`) —
 finish that on its own before starting an unrelated spec-kit feature pass, don't interleave them.
 
-## ⚠ Do NOT run `npm ci` / `npm install` here without reading this
+## How hypergraph is installed here
 
-`node_modules/hypergraph` is a **symlink to the live local checkout at
-`E:\Code\P2P\hypergraph`** (see `ECOSYSTEM.md` there for the full picture). That is deliberate —
-it means this repo tests against current hypergraph rather than a snapshot.
+`package.json` declares `"hypergraph": "file:../hypergraph"`, so `npm install` and `npm ci` create
+a real link to the live checkout at `E:\Code\P2P\hypergraph` (see `ECOSYSTEM.md` there for the full
+picture). This repo therefore always tests against current hypergraph, never a snapshot, and both
+commands are safe to run. The hypergraph checkout must sit next to this repo.
 
-`package-lock.json` still pins `hypergraph` to commit `c239938` (2026-08-02), which is **behind**
-the local checkout by a set of apply-time signature-binding and validation changes (relation/tag
-signatures bound to context, content-append author checks, sortable content-version keys). So:
-
-- **`npm ci` will replace the symlink with that stale pinned commit**, producing a peer that
-  *rejects tag/relation events* signed by a current-hypergraph peer. This presents as
-  "replication silently doesn't work," with nothing pointing at version skew.
-- The lock can't be corrected yet: hypergraph's current work is uncommitted/unpushed, so there is
-  no GitHub commit to pin to. Until hypergraph publishes, treat the symlink as the source of truth
-  and this lockfile entry as known-stale.
-- If you do clobber it, restore with: `npm link` in the hypergraph checkout, then
-  `npm link hypergraph` here.
+This replaced a `github:tibocub/hypergraph` reference on 2026-09-13, for two reasons: npm 12 blocks
+git dependencies by default, and git installs produced copies that went stale. **Until that switch,
+this repo was running a stale copy of hypergraph** — first an August snapshot, then a Sep 9 copy
+accidentally made by `ln -s`, which silently copies on Windows. If a link ever needs manual repair,
+never use `ln -s`; see `ECOSYSTEM.md`.
 
 hypergraph is ALPHA and takes intentional breaking changes, so a stale copy is not a safe
-fallback — it's a silently-incompatible peer.
+fallback — it's a silently-incompatible peer that rejects events signed by a current one.
 
 ## Known cleanup
 
