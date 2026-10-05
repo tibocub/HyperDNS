@@ -27,7 +27,9 @@ test('hyperdns: resolve is deterministic and supports multi-claim + moderation',
   const roleKeyHex = await graph.createRoleBase()
   await graph.roleBase.init(owner)
 
-  const ctx = await graph.createContext()
+  // Moderators are appointed in the RoleBase below, as an authority does
+  // (see src/authority.js): the context takes its roles from it.
+  const ctx = await graph.createContext({ roles: 'rolebase' })
   await graph.openContext(ctx)
 
   const domain1 = await graph.put({ type: 'domain' })
