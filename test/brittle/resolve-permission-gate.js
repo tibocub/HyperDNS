@@ -59,12 +59,9 @@ test('resolve() excludes a domain claim until its author holds the claim permiss
 
   t.teardown(async () => {
     repl.close()
-    await Promise.allSettled([
-      graphOwner.close(),
-      graphMember.close(),
-      storeOwner.close(),
-      storeMember.close()
-    ])
+    // graphs before their stores (Autobase 7.28.2 throws on a base closed after its storage)
+    await Promise.allSettled([graphOwner.close(), graphMember.close()])
+    await Promise.allSettled([storeOwner.close(), storeMember.close()])
     fs.rmSync(dirOwner, { recursive: true, force: true })
     fs.rmSync(dirMember, { recursive: true, force: true })
   })
@@ -153,12 +150,9 @@ test('resolve() ignores a record relate()-attached to someone else\'s domain by 
 
   t.teardown(async () => {
     repl.close()
-    await Promise.allSettled([
-      graphOwner.close(),
-      graphAttacker.close(),
-      storeOwner.close(),
-      storeAttacker.close()
-    ])
+    // graphs before their stores (Autobase 7.28.2 throws on a base closed after its storage)
+    await Promise.allSettled([graphOwner.close(), graphAttacker.close()])
+    await Promise.allSettled([storeOwner.close(), storeAttacker.close()])
     fs.rmSync(dirOwner, { recursive: true, force: true })
     fs.rmSync(dirAttacker, { recursive: true, force: true })
   })

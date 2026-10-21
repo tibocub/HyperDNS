@@ -67,13 +67,12 @@ test('createAuthority()\'s descriptor is plain and JSON-serializable, and joinAu
 
   const repl = replicatePair(storeOwner, storeMember)
 
+  let member = null
   t.teardown(async () => {
     repl.close()
-    await Promise.allSettled([
-      owner.graph.close(),
-      storeOwner.close(),
-      storeMember.close()
-    ])
+    // graphs before their stores (Autobase 7.28.2 throws on a base closed after its storage)
+    await Promise.allSettled([owner.graph.close(), member && member.graph.close()])
+    await Promise.allSettled([storeOwner.close(), storeMember.close()])
     fs.rmSync(dirOwner, { recursive: true, force: true })
     fs.rmSync(dirMember, { recursive: true, force: true })
   })
@@ -82,8 +81,7 @@ test('createAuthority()\'s descriptor is plain and JSON-serializable, and joinAu
   // sent to a friend, embedded in an address.
   const wireDescriptor = JSON.parse(JSON.stringify(owner.descriptor))
 
-  const member = await joinAuthority(wireDescriptor, { store: storeMember })
-  t.teardown(async () => { await member.graph.close() })
+  member = await joinAuthority(wireDescriptor, { store: storeMember })
 
   t.absent(member.network, 'no network connection is made unless opts.connect is set')
 
@@ -130,20 +128,18 @@ test('resolve() works on a joined peer WITHOUT the caller manually updating role
   const owner = await createAuthority('bobsDNS', { store: storeOwner })
   const repl = replicatePair(storeOwner, storeMember)
 
+  let member = null
   t.teardown(async () => {
     repl.close()
-    await Promise.allSettled([
-      owner.graph.close(),
-      storeOwner.close(),
-      storeMember.close()
-    ])
+    // graphs before their stores (Autobase 7.28.2 throws on a base closed after its storage)
+    await Promise.allSettled([owner.graph.close(), member && member.graph.close()])
+    await Promise.allSettled([storeOwner.close(), storeMember.close()])
     fs.rmSync(dirOwner, { recursive: true, force: true })
     fs.rmSync(dirMember, { recursive: true, force: true })
   })
 
   const wireDescriptor = JSON.parse(JSON.stringify(owner.descriptor))
-  const member = await joinAuthority(wireDescriptor, { store: storeMember })
-  t.teardown(async () => { await member.graph.close() })
+  member = await joinAuthority(wireDescriptor, { store: storeMember })
 
   await owner.dns.publish('example', { type: 'A', value: '9.9.9.9' })
   await owner.graph.update()
