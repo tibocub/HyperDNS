@@ -12,10 +12,9 @@ the reasoning behind it.
 
 - **`name`** — the record name to resolve (e.g. `blog`, `forum`, `bobs-blog`). No `/`, `@`, or
   whitespace.
-- **`authority`** — which HyperDNS authority to resolve `name` within (e.g. `bobsDNS`,
-  `my-dns`). No `/`, `@`, or whitespace. This is what selects (and, via
-  `network/topic.js`'s deterministic topic derivation, discovers) the specific community/instance
-  — see `docs/NETWORKING.md`.
+- **`authority`** — which HyperDNS authority to resolve `name` within: the name of an authority this
+  instance holds (`bobsDNS`, `my-dns`), or the authority's link (`hg:<key>`), which reaches any authority
+  and joins it read-only if needed. No `/`, `@`, or whitespace. See `docs/NETWORKING.md`.
 - **`hyperdns://`** — an optional, ignorable scheme prefix. Never required; useful mainly for a
   browser/link context. Case-insensitive.
 - **`path`** — everything after the first `/` following the authority. Entirely optional, and
@@ -26,6 +25,7 @@ Examples:
 
 ```
 blog@bobsDNS
+blog@hg:oxkj3m3rgtjki5oqdggrmcj9zin1rnz4rkifuxhdxnidf6sy9cpy
 hyperdns://blog@bobsDNS
 forum@my-dns/posts
 forum@my-dns/post/1a0e0f168ab42de514f92cb95bd640ac599c43af9efbde0a14c81faa16bb0fe8/8
@@ -90,6 +90,8 @@ equivalent:
 - **TTL / caching.** Already present — `HYPERDNS_SCHEMA.md`'s record shape has an optional `ttl`.
   Nothing in `resolve()` currently *acts* on it (no cache layer yet), but the field exists for
   when one does.
+- **Errors.** `resolveAddress()` errors carry a `code`: `UNKNOWN_AUTHORITY`, `AMBIGUOUS_AUTHORITY` (two held
+  authorities share a name: use the link), `UNKNOWN_NAME`, `UNAVAILABLE` (nobody online holds it).
 - **Case sensitivity.** Real DNS names are conventionally case-insensitive. HyperDNS names and
   authorities are currently treated as opaque, case-sensitive strings — not addressed here;
   worth a deliberate decision later if it becomes a real point of confusion (e.g. `BobsDNS` vs

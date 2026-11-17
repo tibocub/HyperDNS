@@ -1,11 +1,11 @@
 # Replication Model (HyperDNS)
 
-HyperDNS operates on an eventually consistent graph.
+HyperDNS operates on hypergraph's eventually consistent spaces (`hypergraph/next`).
 
 ## Authority scope
 
 - Resolution is scoped to a single DNS authority (instance) selected explicitly by the caller (e.g. `my-blog@myDNS` - see `docs/ADDRESSING.md`).
-- A HyperDNS authority is independently addressable and discoverable.
+- A HyperDNS authority is a hypergraph space, addressed by its key (link); see `docs/NETWORKING.md`.
 - Authorities MUST NOT be mixed during resolution unless explicitly federated/composed.
 
 ## Guarantees

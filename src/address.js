@@ -1,4 +1,5 @@
-const resolve = require('./resolve')
+const { lookup } = require('./resolve')
+const { findAuthority, dnsError } = require('./authority')
 
 const SCHEME_PREFIX = /^hyperdns:\/\//i
 
@@ -68,38 +69,35 @@ function parseAddress (address) {
 }
 
 /**
- * Resolve a full HyperDNS address. Only the `name@authority` part is ever
- * resolved here - `path`, if present, is returned alongside the records
- * as-is, for the caller to interpret (see parseAddress() above for why).
+ * Resolves a full HyperDNS address with the caller's hypergraph instance
+ * (`opts.hg`, a `hypergraph/next` instance). The authority is a link
+ * (`blog@hg:…`: joined read-only if not held yet) or the name of an
+ * authority `hg` holds. Only `name@authority` is resolved; `path` is
+ * returned as-is (see parseAddress() above for why).
+ *
+ * Errors carry a `code`: UNKNOWN_AUTHORITY, AMBIGUOUS_AUTHORITY,
+ * UNKNOWN_NAME, UNAVAILABLE (nobody online holds what is needed).
  *
  * @param {string} address
  * @param {Object} opts
- * @param {Function} opts.getAuthorityClient - `(authorityName) => client`,
- *   where client is either a HyperDNS instance (has `.resolve()`) or a
- *   plain `{ graph, context, trustedModerators? }`
- * @returns {Promise<{ records: Array, path: string|null }>}
+ * @param {Object} opts.hg
+ * @param {number} [opts.timeout=10000] - ms to wait for the authority's
+ *   holders (joining, records known but not arrived yet)
+ * @returns {Promise<{ records: Array, path: string|null, authority: string }>}
+ *   `authority`: the space key of the authority that answered
  */
 async function resolveAddress (address, opts = {}) {
   const { name, dns, path } = parseAddress(address)
+  if (!opts.hg) throw new Error('hg is required')
+  const timeout = opts.timeout || 10000
 
-  if (!opts.getAuthorityClient) throw new Error('getAuthorityClient is required')
-
-  const client = await opts.getAuthorityClient(dns)
-
-  let records
-  if (client && typeof client.resolve === 'function') {
-    records = await client.resolve(name)
-  } else if (client && client.graph && client.context) {
-    records = await resolve(name, {
-      graph: client.graph,
-      context: client.context,
-      trustedModerators: client.trustedModerators || []
-    })
-  } else {
-    throw new Error('Invalid authority client')
+  const space = await findAuthority(opts.hg, dns, { timeout })
+  const { records, complete } = await lookup(name, { space, timeout })
+  if (!records.length) {
+    if (complete) throw dnsError('UNKNOWN_NAME', `No name "${name}" in ${dns}`)
+    throw dnsError('UNAVAILABLE', `"${name}" may be in ${dns}, but nobody who has it is online: try again later`)
   }
-
-  return { records, path }
+  return { records, path, authority: space.key }
 }
 
 module.exports = {

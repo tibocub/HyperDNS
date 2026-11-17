@@ -6,170 +6,98 @@
 npm run shell
 ```
 
-This launches one long-running process with a `hyperdns >` prompt. Type commands directly
-(`create`, `publish`, `resolve`, ...) — there's no `hyperdns` prefix to type, since the whole
-process is already HyperDNS-specific. Run `help` any time for the full command list.
+One long-running process with a `hyperdns >` prompt. Type commands directly (`create`, `publish`, `resolve`...).
+`help` lists them all.
 
-## The most important thing to understand: "current authority"
+## One identity, many authorities, one "current"
 
-The shell holds **exactly one authority at a time** — whichever one you most recently `create`d
-or `join`ed. Every other command (`publish`, `resolve`, `status`, `connect`, `descriptor`)
-operates on that one. There's no way to juggle two authorities in the same shell process.
+The shell opens one hypergraph instance in `.hyperdns/hg/`: your identity and every authority you created or
+joined. One of them is **current**: the one `publish`, bare-name `resolve`, `status`, `link` and `invite` act on.
+`create <name>` (yours) and `use <name>` (any you hold) switch it. `resolve name@authority` works on any authority,
+current or not.
 
-**This means testing locally with two peers needs two separate terminals/processes** — one
-shell acting as the owner, a second, separate shell acting as the joining peer. Running both
-`create` and `join` in the *same* shell session doesn't give you two peers; it just switches
-which single authority that one shell is currently pointed at.
+Testing two peers on one machine needs two shells in two different folders (each has its own `.hyperdns/`).
 
 ## `name` is a name, not a path
 
 ```
 create bobsDNS        # right
-create ./some/path    # wrong - this is NOT how you point at existing data
+create ./some/path    # wrong
 ```
 
-`create <name>` takes a short, human-chosen label (letters/numbers/`-`/`_`) for a *new or
-already-yours* authority — not a file path. If you run `create` with the same name again later
-(even in a different shell process), it resumes the authority you already have locally, rather
-than making a new one — that's the mechanism for "reopening what I already have," not passing
-it a path.
+`create` with a name you already created resumes that authority (same identity, same data).
 
-## Testing two peers on one machine (or two)
+## Two peers
 
 **Terminal 1 — the owner:**
 ```
 hyperdns > create bobsDNS
 created authority "bobsDNS"
-  local data: /path/to/HyperDNS/.hyperdns/owned/bobsDNS
+  anyone resolves from it with its link: hg:oxkj3m3rgtjki5...
 hyperdns:bobsDNS (offline) > connect
-connecting...
 connected
-hyperdns:bobsDNS (offline online) > descriptor
-{ ... prints JSON ... }
-```
-
-Copy that JSON, or note the path it's saved to
-(`.hyperdns/owned/bobsDNS/descriptor.json` on the owner's machine).
-
-**Terminal 2 — a separate peer (can be the same machine, a different directory, or a different
-machine entirely):**
-```
-hyperdns > join /path/to/that/descriptor.json
-joined authority "bobsDNS"
-  local data: /path/to/HyperDNS/.hyperdns/joined/bobsDNS
-hyperdns:bobsDNS (offline) > connect
-connecting...
-connected
-```
-
-Once both sides show `connect`ed, publishing on one and resolving on the other should work:
-
-```
-# owner:
 hyperdns:bobsDNS (online) > publish blog A 1.2.3.4
 published blog -> A 1.2.3.4
+```
 
-# peer, after a moment for it to replicate:
-hyperdns:bobsDNS (online) > resolve blog
+**Terminal 2 — anyone else, in another folder:**
+```
+hyperdns > connect
+hyperdns > resolve blog@hg:oxkj3m3rgtjki5...
+  A  1.2.3.4
+hyperdns > resolve blog@bobsDNS
   A  1.2.3.4
 ```
 
-`join` currently always needs an explicit descriptor (a file path, or the JSON itself) — there's
-no way yet to resolve `name@authority` from just the authority's name without one. That's a
-real, bigger feature (see `docs/NETWORKING.md`'s "Mode B: Query mode") that isn't built yet.
+The first `resolve` by link joins the authority (read-only: you may not publish there); from then on its name
+works, and `use bobsDNS` makes it current. `join <link>` does the same joining without resolving.
 
-## `connect` — what to actually expect
+## Letting others publish
 
-- It's **safe to run more than once** — if already connected, it just says `already connected`
-  and does nothing further.
-- **It can be slow, especially with nobody else to connect to.** With zero peers around,
-  `connect` goes through a real discovery/retry cycle before giving up and reporting itself
-  connected anyway (with `0` connections) — this can take up to roughly a minute or two in the
-  worst case. It is not designed to fail fast when alone; it's designed to keep trying.
-- Check `status` afterward — `network: online (N connection(s))` is what actually tells you
-  whether a peer was found, not just whether `connect` finished.
+The owner (and only members whose role has `dns.publish`) publish. There's no shell command for giving it yet;
+see `docs/HYPERDNS_SCHEMA.md` for the two calls.
 
-## `resolve` — bare names vs. full addresses
+## `connect` / `disconnect`
 
-`resolve` accepts either a bare record name (resolved on whatever authority is currently
-loaded) or a full `name@authority` address (see `docs/ADDRESSING.md` for the full grammar,
-including an optional trailing path):
+`connect` goes online for every authority of the shell; safe to run again. `disconnect` goes offline (local data
+kept). Resolving or joining by link goes online by itself.
+
+## `resolve`
 
 ```
-hyperdns:testdns (online) > resolve testrec
-  hyper  hyper://123abc
-hyperdns:testdns (online) > resolve testrec@testdns
-  hyper  hyper://123abc
+resolve testrec                 # the current authority
+resolve testrec@testdns         # an authority you hold, by name
+resolve testrec@hg:...          # any authority, by link
+resolve forum@testdns/posts     # a trailing path is shown, never interpreted (docs/ADDRESSING.md)
 ```
 
-Right now, `resolve name@authority` only works if `authority` is the one currently loaded (you
-get a clear error otherwise) — resolving from an authority you haven't `join`ed yet isn't built
-yet (see `docs/NETWORKING.md`'s "Mode B: Query mode").
+Errors say which: no such authority here, no such name, nobody online who has it.
 
 ## Private authorities
 
-`create <name> --private` creates a private authority instead of a normal (public) one. See
-`docs/PRIVACY.md` for the full design and its honest limitations - short version: reaching it
-at all requires the descriptor (its network topic isn't derivable from the name), and every
-record is encrypted, decryptable only by identities explicitly granted access.
-
 ```
 hyperdns > create secretDNS --private
-created authority "secretDNS"
-  private: reaching this authority requires the descriptor ...
-hyperdns:secretDNS (offline) > publish blog hyper hyper://abc123
-hyperdns:secretDNS (offline) > resolve blog
-  hyper  hyper://abc123
+hyperdns:secretDNS (offline) > invite
+hg:...
 ```
 
-The owner can already resolve their own records (auto-granted on creation). To let someone
-else in:
+Send the invite link; the person runs `join <link>` while you (or another member able to let people in) are online.
+See `docs/PRIVACY.md`.
+
+## `status`
 
 ```
-# them, in their own shell:
-hyperdns > whoami
-  identity:            <their pubkey>
-  encryption identity: <their encryption pubkey>
-
-# you, after they send you both of those:
-hyperdns:secretDNS (offline) > grant <their pubkey> <their encryption pubkey>
-granted <pubkey>... access to this authority's records
+authority:  <name>
+role:       owner | admin | ... | none (reading only)
+private:    yes | no
+identity:   <your identity key>
+key:        <the authority's key>
+network:    offline | online (N peer(s))
+local data: <.hyperdns folder>
 ```
-
-Until granted, a joined peer's `resolve` returns nothing for that authority's records - not
-because nothing replicated, but because the record's content is genuinely encrypted. Record
-*names* are still visible to anyone with the descriptor either way; see `docs/PRIVACY.md` for
-why that's a hard limit.
-
-## `status` field reference
-
-```
-authority:  <the authority's name>
-role:       owner | member | unknown (not yet synced with the authority)
-identity:   <your own public key for this authority>
-context:    <the context key records live in>
-network:    offline | online (N connection(s))
-local data: <where this authority's data is stored on disk>
-```
-
-`role: unknown (not yet synced with the authority)` is normal right after joining and before
-you've ever connected — the RoleBase registry (who owns what) is itself data that has to
-replicate in, same as anything else. It resolves to `member` (or `owner`) once you've connected
-and it's had a chance to sync.
 
 ## Where things are stored
 
-```
-.hyperdns/
-  owned/<name>/    - authorities this identity created
-  joined/<name>/   - authorities this identity has joined
-    store/                  - the actual Corestore data
-    descriptor.json          - shareable - hand this to others via "join"
-    identity-secret.json     - NOT shareable - this identity's private key material
-```
-
-`owned` and `joined` are kept separate deliberately: an authority you created and a locally
-joined copy of the same authority are two different local identities, and need two different
-directories even if they share a human-chosen name.
-
-`.hyperdns/` is gitignored — it's per-machine local state, not something to commit.
+`.hyperdns/hg/`: hypergraph's instance folder (identity, every authority). Gitignored, per machine. Before spec 001
+it held `owned/` and `joined/` folders with descriptors and identity seeds; those are not read any more (D2: no
+migration).

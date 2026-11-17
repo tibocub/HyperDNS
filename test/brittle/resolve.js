@@ -1,89 +1,31 @@
 const test = require('brittle')
-const Corestore = require('corestore')
-const crypto = require('hypercore-crypto')
-const os = require('os')
-const path = require('path')
-const fs = require('fs')
+const { open, eventually } = require('hypergraph/testing')
+const { createAuthority, joinAuthority, PUBLISH_PERMISSION } = require('../../src')
 
-const { Hypergraph } = require('hypergraph')
-const resolve = require('../../src/resolve')
-
+// v1's trustedModerators option is gone: the space's own moderators decide
+// (moderateAction), and every member applies their decisions.
 test('hyperdns: resolve is deterministic and supports multi-claim + moderation', async (t) => {
-  const tmpDir = path.join(os.tmpdir(), `hyperdns-test-${process.pid}-${Date.now()}`)
-  fs.mkdirSync(tmpDir, { recursive: true })
+  const owner = await open(t)
+  const bob = await open(t)
+  const a = await createAuthority('bobsDNS', { hg: owner })
+  const j = await joinAuthority(a.link, { hg: bob })
+  await a.space.defineRole('publisher', ['post', PUBLISH_PERMISSION])
+  await a.space.setRole(bob.identity.publicKey, 'publisher')
+  t.ok(await eventually(async () => (await j.space.getRole(bob.identity.publicKey)) === 'publisher', 15000))
 
-  const store = new Corestore(tmpDir)
-  const graph = new Hypergraph(store)
-  await graph.ready()
+  // two claims on one name, one of them a duplicate
+  await a.dns.publish('blog', { type: 'A', value: '2.2.2.2' })
+  const spam = await j.dns.publish('blog', { type: 'A', value: '1.1.1.1' })
+  await j.dns.publish('blog', { type: 'A', value: '2.2.2.2' })
+  await a.dns.publish('blog', { type: 'TXT', value: 'hello', ttl: 30 })
 
-  t.teardown(async () => {
-    await graph.close()
-    await store.close()
-    fs.rmSync(tmpDir, { recursive: true, force: true })
-  })
+  const expected = [{ type: 'A', value: '1.1.1.1' }, { type: 'A', value: '2.2.2.2' }, { type: 'TXT', value: 'hello', ttl: 30 }]
+  t.ok(await eventually(async () => (await a.dns.resolve('blog')).length === 3, 15000))
+  t.alike(await a.dns.resolve('blog'), expected, 'merged, deduplicated, sorted by type then value')
+  t.alike(await a.dns.resolve('blog'), expected, 'the same again')
+  t.ok(await eventually(async () => JSON.stringify(await j.dns.resolve('blog')) === JSON.stringify(expected), 15000), 'the same on the other member')
 
-  const owner = graph.key.toString('hex')
-
-  const roleKeyHex = await graph.createRoleBase()
-  await graph.roleBase.init(owner)
-
-  // Moderators are appointed in the RoleBase below, as an authority does
-  // (see src/authority.js): the context takes its roles from it.
-  const ctx = await graph.createContext({ roles: 'rolebase' })
-  await graph.openContext(ctx)
-
-  const domain1 = await graph.put({ type: 'domain' })
-  await graph.putContent(domain1.id, JSON.stringify({ name: 'example' }), 'application/json')
-  await graph.tag(domain1.id, 'name:example', { author: owner, context: ctx })
-
-  const record1 = await graph.put({ type: 'record' })
-  await graph.putContent(record1.id, JSON.stringify({ name: 'example', type: 'A', value: '1.2.3.4', ttl: 3600 }), 'application/json')
-  await graph.relate({ from: domain1.id, to: record1.id, type: 'has_record', author: owner, context: ctx })
-
-  const domain2 = await graph.put({ type: 'domain' })
-  await graph.putContent(domain2.id, JSON.stringify({ name: 'example' }), 'application/json')
-  await graph.tag(domain2.id, 'name:example', { author: owner, context: ctx })
-
-  const record2 = await graph.put({ type: 'record' })
-  await graph.putContent(record2.id, JSON.stringify({ name: 'example', type: 'A', value: '5.6.7.8', ttl: 3600 }), 'application/json')
-  await graph.relate({ from: domain2.id, to: record2.id, type: 'has_record', author: owner, context: ctx })
-
-  const moderator = crypto.keyPair()
-  const moderatorPub = moderator.publicKey.toString('hex')
-  await graph.roleBase.append({
-    type: 'roles/setRole',
-    member: moderatorPub,
-    role: 'mod',
-    author: owner,
-    timestamp: Date.now()
-  })
-
-  await graph.update()
-
-  await graph.moderateAction({
-    context: ctx,
-    action: 'content.hide',
-    target: record2.id,
-    keyPair: moderator
-  })
-
-  await graph.update()
-
-  const r1 = await resolve('example', {
-    graph,
-    context: ctx,
-    trustedModerators: [moderatorPub]
-  })
-
-  const r2 = await resolve('example', {
-    graph,
-    context: ctx,
-    trustedModerators: [moderatorPub]
-  })
-
-  t.alike(r1, r2)
-
-  t.alike(r1, [
-    { type: 'A', value: '1.2.3.4', ttl: 3600 }
-  ])
+  await a.space.moderateAction('hide', spam.id, { reason: 'spam' })
+  t.alike(await a.dns.resolve('blog'), expected.slice(1), 'a hidden record is out')
+  t.ok(await eventually(async () => (await j.dns.resolve('blog')).length === 2, 15000), 'for every member')
 })

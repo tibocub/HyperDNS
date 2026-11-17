@@ -38,7 +38,7 @@ function uniqueSorted (arr) {
 // Command-position completion matches against builtin names only (there's
 // no external/PATH program execution in this shell, unlike the original
 // js-shell-kit this is adapted from). Argument-position completion still
-// does filesystem path completion - useful for `join <descriptor-file>`,
+// does filesystem path completion - useful for paths,
 // `create --dir <path>`, etc.
 function createCompleter ({ builtins, cwdProvider }) {
   return async function completer (line) {

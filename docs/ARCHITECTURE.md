@@ -1,5 +1,9 @@
 # ARCHITECTURE
 
+> Stale (pre-shell). Current: `src/` is a protocol layer over a caller-given `hypergraph/next` instance
+> (`schema.js`, `publish.js`, `resolve.js`, `address.js`, `authority.js`); `shell/` is the app. See
+> `HYPERDNS_SCHEMA.md` and `NETWORKING.md`.
+
 ## High-Level Components
 
 1. Core Library (`/core`)

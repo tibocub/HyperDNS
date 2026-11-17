@@ -6,5 +6,7 @@ module.exports = {
   parseAddress: require('./address').parseAddress,
   resolveAddress: require('./address').resolveAddress,
   createAuthority: require('./authority').createAuthority,
-  joinAuthority: require('./authority').joinAuthority
+  joinAuthority: require('./authority').joinAuthority,
+  RECORD_TYPE: require('./schema').RECORD_TYPE,
+  PUBLISH_PERMISSION: require('./schema').PUBLISH_PERMISSION
 }
