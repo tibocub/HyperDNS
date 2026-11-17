@@ -2,7 +2,8 @@ const { spawn } = require('child_process')
 const path = require('path')
 const fs = require('fs')
 
-const timeoutMs = 60000
+// every test runs real peers on a local DHT (hypergraph/testing): seconds each
+const timeoutMs = 240000
 
 const brittleCmd = path.join(__dirname, '..', 'node_modules', 'brittle', 'cmd.js')
 const testDir = path.join(__dirname, '..', 'test', 'brittle')
@@ -30,7 +31,7 @@ const timer = setTimeout(() => {
   killed = true
   child.kill('SIGKILL')
 
-  process.stderr.write('\ntime-out: test took more than 60s\n')
+  process.stderr.write('\ntime-out: test took more than 240s\n')
   process.exit(1)
 }, timeoutMs)
 

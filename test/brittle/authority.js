@@ -1,155 +1,39 @@
 const test = require('brittle')
-const Corestore = require('corestore')
-const os = require('os')
-const path = require('path')
-const fs = require('fs')
-
+const { open, eventually, codeOf } = require('hypergraph/testing')
 const { createAuthority, joinAuthority } = require('../../src')
 
-function makeTmp (prefix) {
-  const dir = path.join(os.tmpdir(), `${prefix}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`)
-  fs.mkdirSync(dir, { recursive: true })
-  return dir
-}
-
-// Direct Corestore-to-Corestore stream replication - no DHT/Hyperswarm - the
-// same fast, reliable pattern used elsewhere for testing real cross-peer
-// behavior without real-network flakiness. The dedicated (slower, real
-// Hyperswarm) end-to-end proof lives in replication-hyperswarm.js; this
-// file is about the bootstrap API itself.
-function replicatePair (storeA, storeB) {
-  const s1 = storeA.replicate(true, { live: true })
-  const s2 = storeB.replicate(false, { live: true })
-  s1.pipe(s2).pipe(s1)
-  return { close: () => { try { s1.destroy() } catch {} try { s2.destroy() } catch {} } }
-}
-
-async function waitFor (fn, { timeoutMs = 8000, intervalMs = 100 } = {}) {
-  const start = Date.now()
-  for (;;) {
-    const val = await fn()
-    if (val) return val
-    if (Date.now() - start > timeoutMs) return null
-    await new Promise(resolve => setTimeout(resolve, intervalMs))
-  }
-}
-
-test('createAuthority() bootstraps a fully working, ready-to-use DNS instance in one call', async (t) => {
-  const dir = makeTmp('hyperdns-authority-create')
-  const store = new Corestore(dir)
-
-  const authority = await createAuthority('bobsDNS', { store })
-
-  t.teardown(async () => {
-    await authority.graph.close()
-    await store.close()
-    fs.rmSync(dir, { recursive: true, force: true })
-  })
-
-  t.absent(authority.network, 'no network connection is made unless opts.connect is set')
-  t.ok(authority.descriptor.authority === 'bobsDNS', 'the descriptor carries the authority name')
-  t.ok(authority.descriptor.roleBaseKey, 'the descriptor carries a RoleBase key')
-  t.ok(Array.isArray(authority.descriptor.contexts) && authority.descriptor.contexts.length === 1, 'the descriptor carries exactly one context')
-
-  await authority.dns.publish('example', { type: 'A', value: '1.2.3.4' })
-  const result = await authority.dns.resolve('example')
-  t.alike(result, [{ type: 'A', value: '1.2.3.4' }], 'publish/resolve work immediately with zero further setup')
+test('createAuthority() bootstraps a working, public DNS authority in one call', async (t) => {
+  const hg = await open(t)
+  const a = await createAuthority('bobsDNS', { hg })
+  t.is(a.space.name, 'bobsDNS')
+  t.ok(a.space.isPublic, 'public by default: anyone with the link may read it')
+  t.is(a.link, a.space.publicLink())
+  await a.dns.publish('blog', { type: 'A', value: '1.2.3.4', ttl: 60 })
+  t.alike(await a.dns.resolve('blog'), [{ type: 'A', value: '1.2.3.4', ttl: 60 }])
 })
 
-test('createAuthority()\'s descriptor is plain and JSON-serializable, and joinAuthority() can rebuild a working peer from it', async (t) => {
-  const dirOwner = makeTmp('hyperdns-authority-owner')
-  const dirMember = makeTmp('hyperdns-authority-member')
+test('joinAuthority(link) gives a peer that resolves the owner\'s records', async (t) => {
+  const owner = await open(t)
+  const peer = await open(t)
+  const a = await createAuthority('bobsDNS', { hg: owner })
+  await a.dns.publish('blog', { type: 'A', value: '1.2.3.4' })
 
-  const storeOwner = new Corestore(dirOwner)
-  const storeMember = new Corestore(dirMember)
+  const j = await joinAuthority(a.link, { hg: peer })
+  t.is(j.space.key, a.space.key)
+  t.ok(await eventually(async () => (await j.dns.resolve('blog')).length === 1, 15000))
+  t.alike(await j.dns.resolve('blog'), [{ type: 'A', value: '1.2.3.4' }])
 
-  const owner = await createAuthority('bobsDNS', { store: storeOwner })
+  // published later, replicated later, with nothing to update by hand
+  await a.dns.publish('wiki', { type: 'A', value: '5.6.7.8' })
+  t.ok(await eventually(async () => (await j.dns.resolve('wiki')).length === 1, 15000))
 
-  const repl = replicatePair(storeOwner, storeMember)
-
-  let member = null
-  t.teardown(async () => {
-    repl.close()
-    // graphs before their stores (Autobase 7.28.2 throws on a base closed after its storage)
-    await Promise.allSettled([owner.graph.close(), member && member.graph.close()])
-    await Promise.allSettled([storeOwner.close(), storeMember.close()])
-    fs.rmSync(dirOwner, { recursive: true, force: true })
-    fs.rmSync(dirMember, { recursive: true, force: true })
-  })
-
-  // Simulates however a real app would actually pass this along - printed,
-  // sent to a friend, embedded in an address.
-  const wireDescriptor = JSON.parse(JSON.stringify(owner.descriptor))
-
-  member = await joinAuthority(wireDescriptor, { store: storeMember })
-
-  t.absent(member.network, 'no network connection is made unless opts.connect is set')
-
-  await owner.dns.publish('example', { type: 'A', value: '9.9.9.9' })
-  await owner.graph.update()
-
-  const replicated = await waitFor(async () => {
-    await member.graph.update()
-    await member.graph.roleBase.update()
-    const r = await member.dns.resolve('example')
-    return Array.isArray(r) && r.length === 1 ? r : null
-  })
-
-  t.alike(replicated, [{ type: 'A', value: '9.9.9.9' }], "joinAuthority()'s peer resolves the owner's published record correctly")
+  t.is((await joinAuthority(a.link, { hg: peer })).space.key, a.space.key, 'joining a held authority again reuses it')
 })
 
-test('createAuthority()/joinAuthority() require opts.store', async (t) => {
-  await t.exception(() => createAuthority('bobsDNS'), 'createAuthority throws without opts.store')
-  await t.exception(() => joinAuthority({ authority: 'bobsDNS', roleBaseKey: 'a'.repeat(64), contexts: [{ key: 'b'.repeat(64) }] }), 'joinAuthority throws without opts.store')
-})
-
-test('resolve() works on a joined peer WITHOUT the caller manually updating roleBase first', async (t) => {
-  // Regression test for a real bug: resolve() only ever called
-  // graph.update() - never graph.roleBase.update(). RoleBase is its own
-  // separate Autobase (own replication, own view); graph.can() (resolve()'s
-  // permission gate) reads its registry directly with no update of its
-  // own. So on a peer that had genuinely joined and genuinely replicated
-  // real data, resolve() could still silently return zero records - not
-  // because nothing replicated, but because the permission check was
-  // evaluated against a stale local view of who holds dns.publish. This
-  // looked identical to "replication isn't working" from the outside.
-  //
-  // Every existing test that exercised cross-peer resolve() happened to
-  // call `await member.graph.roleBase.update()` manually right before
-  // resolve() - which is exactly why this shipped uncaught: the tests were
-  // inadvertently doing resolve()'s job for it. This test deliberately
-  // does NOT do that, to actually prove resolve() is self-sufficient now.
-  const dirOwner = makeTmp('hyperdns-authority-owner-noupdate')
-  const dirMember = makeTmp('hyperdns-authority-member-noupdate')
-
-  const storeOwner = new Corestore(dirOwner)
-  const storeMember = new Corestore(dirMember)
-
-  const owner = await createAuthority('bobsDNS', { store: storeOwner })
-  const repl = replicatePair(storeOwner, storeMember)
-
-  let member = null
-  t.teardown(async () => {
-    repl.close()
-    // graphs before their stores (Autobase 7.28.2 throws on a base closed after its storage)
-    await Promise.allSettled([owner.graph.close(), member && member.graph.close()])
-    await Promise.allSettled([storeOwner.close(), storeMember.close()])
-    fs.rmSync(dirOwner, { recursive: true, force: true })
-    fs.rmSync(dirMember, { recursive: true, force: true })
-  })
-
-  const wireDescriptor = JSON.parse(JSON.stringify(owner.descriptor))
-  member = await joinAuthority(wireDescriptor, { store: storeMember })
-
-  await owner.dns.publish('example', { type: 'A', value: '9.9.9.9' })
-  await owner.graph.update()
-
-  const replicated = await waitFor(async () => {
-    await member.graph.update()
-    // Deliberately no member.graph.roleBase.update() call here.
-    const r = await member.dns.resolve('example')
-    return Array.isArray(r) && r.length === 1 ? r : null
-  })
-
-  t.alike(replicated, [{ type: 'A', value: '9.9.9.9' }], "resolve() resolves the owner's published record correctly, with no help from the caller updating roleBase first")
+test('createAuthority()/joinAuthority() validate their input', async (t) => {
+  const hg = await open(t)
+  t.is(await codeOf(createAuthority('x', {})), 'opts.hg is required')
+  t.is(await codeOf(createAuthority('', { hg })), 'name is required')
+  t.is(await codeOf(joinAuthority('hg:abc', {})), 'opts.hg is required')
+  t.is(await codeOf(joinAuthority('', { hg })), 'link is required')
 })

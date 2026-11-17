@@ -1,12 +1,9 @@
-- Domain names are NOT globally unique
-- Multiple domain entities may represent the same name
-- Never rely on entity IDs for name resolution
-- Records must be linked via has_record
-- Records without content are invalid
-- Resolution must be deterministic
-- Resolution must NOT mix multiple contexts
-- Moderation is always context-scoped
-- Deleted entities must not resolve
-
-- Name lookup is tag-based in the MVP and may return many candidates
-- The MVP applies no ranking or prioritization between domain claims
+- Names are NOT globally unique; several records may claim the same name
+- An authority is one space; resolution reads exactly one space and never mixes two
+- Only records whose author holds `dns.publish` count (the type's put rule, enforced by every member)
+- Never rely on record ids for name resolution
+- Records without a type or value are invalid (refused at publish)
+- Resolution must be deterministic: deduplicated, sorted by type then value
+- Moderation is always the space's own
+- Deleted and hidden records must not resolve
+- The MVP applies no ranking or prioritization between claims

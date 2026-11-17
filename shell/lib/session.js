@@ -1,251 +1,114 @@
 const path = require('path')
-const fs = require('fs')
-const Corestore = require('corestore')
-const hypercoreCrypto = require('hypercore-crypto')
-const { Hypergraph } = require('hypergraph')
-const { createAuthority, joinAuthority, attachConnect, attachGrantAccess } = require('../../src/authority')
+const { Hypergraph } = require('hypergraph/next')
+const { createAuthority, joinAuthority, findAuthority } = require('../../src/authority')
 const createDNS = require('../../src/createDNS')
-const { deriveAuthorityTopic } = require('../../network/topic')
-
-
-function sanitizeName (name) {
-  return name.replace(/[^a-zA-Z0-9_-]/g, '_')
-}
 
 // Catches the most common real mistake: passing a path (or anything with
 // slashes/whitespace) where a short, human-chosen name was expected.
-// Without this, sanitizeName() above would silently turn e.g.
-// ".hyperdns/test2/descriptor.json" into a confusing, unintended local
-// directory name instead of failing clearly.
 function validateAuthorityName (name) {
   if (typeof name !== 'string' || name.trim().length === 0) {
     throw new Error('authority name is required')
   }
-  if (/[/\\]/.test(name) || /\s/.test(name)) {
+  if (/[/\\@]/.test(name) || /\s/.test(name)) {
     throw new Error(
-      `"${name}" doesn't look like an authority name - it looks like a path. ` +
-      'create/join take a short, human-chosen name (e.g. "bobsDNS"), not a file path. ' +
-      'To join an existing authority from a descriptor file, use "join <path-to-descriptor.json>" instead.'
-    )
-  }
-}
-
-function descriptorPath (dir) {
-  return path.join(dir, 'descriptor.json')
-}
-
-function identitySeedPath (dir) {
-  return path.join(dir, 'identity-secret.json')
-}
-
-function loadDescriptor (dir) {
-  const file = descriptorPath(dir)
-  if (!fs.existsSync(file)) return null
-  return JSON.parse(fs.readFileSync(file, 'utf8'))
-}
-
-function saveDescriptor (dir, descriptor) {
-  fs.mkdirSync(dir, { recursive: true })
-  fs.writeFileSync(descriptorPath(dir), JSON.stringify(descriptor, null, 2))
-}
-
-// This identity's own seed - NEVER written into descriptor.json, which is
-// meant to be shared (printed, sent to someone else, used with "join").
-// Without persisting and reusing this, every "resumed" session would
-// silently be a brand new, unrecognized identity - not actually the
-// original owner (or the original joining member) at all, since
-// `new Hypergraph(store)` with no seed generates a fresh random one every
-// time rather than deriving anything from the store's own on-disk state.
-//
-// Passing just { seed } to Hypergraph is NOT enough on its own: seed only
-// recovers the higher-level identity concept (keet-identity-key, meant for
-// mnemonic-based multi-device recovery) - graph.key (what actually
-// determines this device's own userCore/authorship identity, and what a
-// RoleBase registry actually checks permissions against) comes from
-// deviceKeyPair, which defaults to a fresh random keypair regardless of
-// seed unless passed explicitly. hypercoreCrypto.keyPair(seed) derives a
-// keypair deterministically, so persisting one seed and deriving both from
-// it keeps everything stable across restarts.
-function loadOrCreateIdentitySeed (dir) {
-  const file = identitySeedPath(dir)
-  if (fs.existsSync(file)) {
-    const saved = JSON.parse(fs.readFileSync(file, 'utf8'))
-    return Buffer.from(saved.seed, 'hex')
-  }
-  const seed = hypercoreCrypto.randomBytes(32)
-  fs.mkdirSync(dir, { recursive: true })
-  fs.writeFileSync(file, JSON.stringify({ seed: seed.toString('hex') }, null, 2))
-  return seed
-}
-
-function graphOptsForSeed (seed) {
-  return { seed, deviceKeyPair: hypercoreCrypto.keyPair(seed) }
-}
-
-// Owned (authorities this identity created) and joined (authorities this
-// identity is a member of) are kept in separate namespaces. Without this,
-// an owner running "create test2" and a local peer running "join
-// .../test2/descriptor.json" on the SAME machine would both resolve to
-// the same directory (.hyperdns/test2/) purely because they share a human-
-// chosen name - two different local identities trying to open the same
-// Corestore at once, which fails outright (the storage engine locks its
-// files per-process). This isn't just a testing-on-one-machine edge case:
-// authority names aren't guaranteed unique at all, so this also protects
-// against two genuinely different authorities you've joined/created
-// colliding on disk.
-function authorityDir (baseDir, bucket, name) {
-  return path.join(baseDir, bucket, sanitizeName(name))
-}
-
-// Even within one bucket, a name collision between two DIFFERENT actual
-// authority instances (different RoleBase key) that happen to share a
-// human-chosen name must not silently reuse/overwrite the wrong local data.
-function assertNotNameCollision (existing, descriptor, name) {
-  if (existing && existing.roleBaseKey !== descriptor.roleBaseKey) {
-    throw new Error(
-      `local data for an authority named "${name}" already exists but is a different authority ` +
-      '(different RoleBase key) - this is a name collision, not the same one. Remove or rename ' +
-      'the existing local data under .hyperdns/ if you meant to replace it.'
+      `"${name}" doesn't look like an authority name - it looks like a path or an address. ` +
+      'create takes a short, human-chosen name (e.g. "bobsDNS"). ' +
+      'To join an existing authority, use "join <link>" instead.'
     )
   }
 }
 
 /**
- * Manages the shell's single "current authority" for the lifetime of one
- * shell process - create/resume one, join one, publish/resolve against it,
- * connect it, and shut it down cleanly on exit. Every authority the shell
- * creates is saved under `.hyperdns/owned/<name>/`, and every one it joins
- * under `.hyperdns/joined/<name>/` (Corestore data plus the descriptor
- * needed to reopen it) - kept separate so an owner and a locally-joined
- * peer of the same authority never try to open the same Corestore at once,
- * and so two different authorities that happen to share a human-chosen
- * name don't collide either (see assertNotNameCollision above). Relaunching
- * the shell and running `create <name>` or `join` again for the same
- * authority resumes it rather than starting over.
+ * The shell's one hypergraph instance (identity and every authority it
+ * created or joined, under `.hyperdns/hg/`) and its "current" authority.
+ * Relaunching and running `create <name>` or `use <name>` again picks up
+ * the same authority: the instance keeps identity and spaces on disk.
+ * `opts.hgOpts`: passed to Hypergraph.open (tests: a local DHT).
  */
 function createSession (opts = {}) {
   const baseDir = opts.baseDir || path.join(process.cwd(), '.hyperdns')
+  let hg = null
   let current = null
+  let online = false
+
+  async function instance () {
+    if (!hg) hg = await Hypergraph.open(path.join(baseDir, 'hg'), opts.hgOpts || {})
+    return hg
+  }
 
   function requireCurrent () {
-    if (!current) throw new Error('no authority loaded - use "create <name>" or "join <path-to-descriptor.json>" first')
+    if (!current) throw new Error('no authority loaded - use "create <name>", "join <link>" or "use <name>" first')
     return current
   }
 
-  async function closeCurrent () {
-    if (!current) return
-    if (current.network) {
-      try { await current.network.disconnect() } catch { /* best-effort */ }
-      try { await current.network.destroy() } catch { /* best-effort */ }
-    }
-    try { await current.graph.close() } catch { /* best-effort */ }
-    try { await current.store.close() } catch { /* best-effort */ }
-    current = null
-  }
-
-  async function create (name, opts = {}) {
-    validateAuthorityName(name)
-    await closeCurrent()
-
-    const dir = authorityDir(baseDir, 'owned', name)
-    const store = new Corestore(path.join(dir, 'store'))
-    const seed = loadOrCreateIdentitySeed(dir)
-    const existing = loadDescriptor(dir)
-
-    if (existing) {
-      // Resuming an authority this same shell already created: same store,
-      // same identity, same RoleBase/context - reopen rather than
-      // recreating, since createAuthority() always bootstraps fresh state.
-      const graph = new Hypergraph(store, graphOptsForSeed(seed))
-      await graph.ready()
-      await graph.openRoleBase(existing.roleBaseKey)
-      const contextKey = existing.contexts[0].key
-      await graph.openContext(contextKey, opts.contextOpts || { writeMode: 'open' })
-
-      const isPrivate = !!existing.private
-      if (isPrivate && existing.scopeBaseKey) await graph.openScopeBase(existing.scopeBaseKey)
-
-      const topic = isPrivate && existing.topic ? Buffer.from(existing.topic, 'hex') : deriveAuthorityTopic(name)
-
-      const dns = createDNS({ graph, context: contextKey, scope: isPrivate ? existing.scopeId : null })
-      let resumed = attachConnect(
-        { graph, store, context: contextKey, dns, network: null, descriptor: existing },
-        { role: 'owner', topic }
-      )
-      if (isPrivate && existing.scopeId) resumed = attachGrantAccess(resumed, existing.scopeId)
-      resumed.name = name
-      resumed.dir = dir
-      resumed.resumed = true
-      current = resumed
-      return current
-    }
-
-    const result = await createAuthority(name, { store, contextOpts: opts.contextOpts, private: !!opts.private, graphOpts: graphOptsForSeed(seed) })
-    saveDescriptor(dir, result.descriptor)
-    result.store = store
-    result.name = name
-    result.dir = dir
-    result.resumed = false
-    current = result
+  function select (space, resumed) {
+    current = { name: space.name, space, dns: createDNS({ space }), hg, dir: baseDir, resumed, private: space.private, link: space.isPublic ? space.publicLink() : null }
     return current
   }
 
-  async function join (descriptorArg) {
-    await closeCurrent()
-
-    let descriptor
-    if (fs.existsSync(descriptorArg)) {
-      descriptor = JSON.parse(fs.readFileSync(descriptorArg, 'utf8'))
-    } else {
-      try {
-        descriptor = JSON.parse(descriptorArg)
-      } catch {
-        throw new Error(
-          `"${descriptorArg}" is neither an existing file path nor a valid JSON descriptor. ` +
-          'join expects a path to a descriptor.json file (or the JSON itself) - ask the ' +
-          'authority\'s owner to share theirs (their shell\'s "descriptor" command prints it).'
-        )
+  async function ownedNamed (name) {
+    for (const s of (await instance()).spaces()) {
+      if (!s.parent && s.own && s.name === name) {
+        const space = hg.space(s.key)
+        await space.ready()
+        return space
       }
     }
-
-    const name = descriptor.authority
-    const dir = authorityDir(baseDir, 'joined', name)
-    const store = new Corestore(path.join(dir, 'store'))
-    const seed = loadOrCreateIdentitySeed(dir)
-    const existing = loadDescriptor(dir)
-    assertNotNameCollision(existing, descriptor, name)
-
-    const result = await joinAuthority(descriptor, { store, graphOpts: graphOptsForSeed(seed) })
-    saveDescriptor(dir, result.descriptor)
-    result.store = store
-    result.name = name
-    result.dir = dir
-    result.resumed = false
-    current = result
-    return current
+    return null
   }
 
-  async function connect (networkOpts) {
-    const authority = requireCurrent()
-    if (authority.network) return authority.network
-    return authority.connect(networkOpts)
+  async function create (name, { private: priv = false } = {}) {
+    validateAuthorityName(name)
+    const existing = await ownedNamed(name)
+    if (existing) return select(existing, true)
+    const { space } = await createAuthority(name, { hg: await instance(), private: priv })
+    return select(space, false)
+  }
+
+  async function join (link) {
+    if (!link || !link.startsWith('hg:')) throw new Error('join expects a link (hg:...) - ask the authority\'s owner for theirs ("link" or "invite")')
+    const { space } = await joinAuthority(link, { hg: await instance() })
+    return select(space, false)
+  }
+
+  async function use (name) {
+    return select(await findAuthority(await instance(), name), true)
+  }
+
+  async function connect () {
+    const h = await instance()
+    if (h.suspended) await h.resume()
+    await h.connectToSwarm()
+    online = true
+  }
+
+  async function disconnect () {
+    if (!hg) return
+    await hg.suspend()
+    online = false
   }
 
   function get () {
     return current
   }
 
+  function isOnline () {
+    return online
+  }
+
   function promptLabel () {
     if (!current) return 'hyperdns'
-    const connected = current.network ? 'online' : 'offline'
-    return `hyperdns:${current.name} (${connected})`
+    return `hyperdns:${current.name} (${online ? 'online' : 'offline'})`
   }
 
   async function shutdown () {
-    await closeCurrent()
+    current = null
+    online = false
+    if (hg) await hg.close()
+    hg = null
   }
 
-  return { create, join, connect, get, requireCurrent, promptLabel, shutdown }
+  return { create, join, use, connect, disconnect, instance, get, isOnline, requireCurrent, promptLabel, shutdown }
 }
 
 module.exports = { createSession }

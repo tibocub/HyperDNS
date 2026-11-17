@@ -1,20 +1,15 @@
 const test = require('brittle')
-const os = require('os')
-const path = require('path')
-const fs = require('fs')
-
+const { tmpDir, bootstrap } = require('hypergraph/testing')
 const { createSession } = require('../../shell/lib/session')
 const createBuiltins = require('../../shell/builtins')
 
-function makeTmpBaseDir () {
-  const dir = path.join(os.tmpdir(), `hyperdns-shell-builtins-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`)
-  fs.mkdirSync(dir, { recursive: true })
-  return dir
+async function shell (t) {
+  const session = createSession({ baseDir: tmpDir(t), hgOpts: { bootstrap: await bootstrap(t) } })
+  t.teardown(() => session.shutdown(), { order: 0 })
+  return { session, builtins: createBuiltins(session) }
 }
 
-// Captures console.log output for one call, without needing readline/stdin
-// piping - createBuiltins() is a plain factory function, so its commands
-// can be exercised directly.
+// Captures console.log output for one call: the commands are plain functions.
 async function captureLogs (fn) {
   const lines = []
   const original = console.log
@@ -27,129 +22,61 @@ async function captureLogs (fn) {
   return lines.join('\n')
 }
 
-test('shell resolve: a bare name resolves on the current authority, unchanged from before addressing existed', async (t) => {
-  const baseDir = makeTmpBaseDir()
-  t.teardown(() => fs.rmSync(baseDir, { recursive: true, force: true }))
-
-  const session = createSession({ baseDir })
-  const builtins = createBuiltins(session)
-
+test('shell resolve: a bare name resolves on the current authority', async (t) => {
+  const { session, builtins } = await shell(t)
   await session.create('testdns')
   await session.get().dns.publish('testrec', { type: 'hyper', value: 'hyper://123abc' })
 
   const output = await captureLogs(() => builtins.resolve.fn(['testrec']))
-  t.ok(output.includes('hyper') && output.includes('hyper://123abc'), 'a bare name resolves correctly')
-
-  await session.shutdown()
+  t.ok(output.includes('hyper') && output.includes('hyper://123abc'))
 })
 
-test('shell resolve: a full name@authority address matching the current authority resolves correctly', async (t) => {
-  // Regression test for a real bug: the shell's resolve command was never
-  // actually wired to use parseAddress() at all - "resolve testrec@testdns"
-  // was passed straight through as a literal record name ("testrec@testdns"),
-  // which obviously never matches anything published, giving a misleading
-  // "no records found" that looked like a resolution bug rather than a
-  // missing integration.
-  const baseDir = makeTmpBaseDir()
-  t.teardown(() => fs.rmSync(baseDir, { recursive: true, force: true }))
-
-  const session = createSession({ baseDir })
-  const builtins = createBuiltins(session)
-
+test('shell resolve: a full name@authority address resolves (regression: it was once passed through as a literal name)', async (t) => {
+  const { session, builtins } = await shell(t)
   await session.create('testdns')
   await session.get().dns.publish('testrec', { type: 'hyper', value: 'hyper://123abc' })
 
   const output = await captureLogs(() => builtins.resolve.fn(['testrec@testdns']))
-  t.ok(output.includes('hyper') && output.includes('hyper://123abc'), 'name@authority resolves correctly when it matches the loaded authority')
-  t.absent(output.includes('no records found'), 'this must not silently fail the way it did before the fix')
-
-  await session.shutdown()
+  t.ok(output.includes('hyper://123abc'))
+  t.absent(output.includes('no records found'))
 })
 
-test('shell resolve: a name@authority address for a DIFFERENT authority gives a clear error, not a silent empty result', async (t) => {
-  const baseDir = makeTmpBaseDir()
-  t.teardown(() => fs.rmSync(baseDir, { recursive: true, force: true }))
-
-  const session = createSession({ baseDir })
-  const builtins = createBuiltins(session)
-
+test('shell resolve: name@authority reaches another held authority than the current one; an unknown one errors clearly', async (t) => {
+  // v1 refused any authority but the current one; now any held one (or link) resolves
+  const { session, builtins } = await shell(t)
+  await session.create('other')
+  await session.get().dns.publish('rec', { type: 'A', value: '9.9.9.9' })
   await session.create('testdns')
-  await session.get().dns.publish('testrec', { type: 'hyper', value: 'hyper://123abc' })
 
-  await t.exception(
-    () => builtins.resolve.fn(['testrec@someotherdns']),
-    /different authority/,
-    'a mismatched authority is a clear, explicit error - not a silent "no records found"'
-  )
-
-  await session.shutdown()
+  const output = await captureLogs(() => builtins.resolve.fn(['rec@other']))
+  t.ok(output.includes('9.9.9.9'))
+  await t.exception(builtins.resolve.fn(['rec@nowhere']), /No authority "nowhere"/)
 })
 
 test('shell resolve: a trailing path is accepted and surfaced, not treated as part of the name', async (t) => {
-  const baseDir = makeTmpBaseDir()
-  t.teardown(() => fs.rmSync(baseDir, { recursive: true, force: true }))
-
-  const session = createSession({ baseDir })
-  const builtins = createBuiltins(session)
-
+  const { session, builtins } = await shell(t)
   await session.create('testdns')
-  await session.get().dns.publish('forum', { type: 'hyper', value: 'hyper://abc123' })
+  await session.get().dns.publish('forum', { type: 'hyper', value: 'hg:forum' })
 
   const output = await captureLogs(() => builtins.resolve.fn(['forum@testdns/posts']))
-  t.ok(output.includes('hyper://abc123'), 'the record still resolves correctly with a trailing path present')
-  t.ok(output.includes('posts'), 'the trailing path is surfaced to the user, not silently dropped')
-
-  await session.shutdown()
+  t.ok(output.includes('hg:forum'))
+  t.ok(output.includes('trailing path "posts"'))
 })
 
-test('shell create --private: bootstraps a private authority whose owner can publish/resolve immediately', async (t) => {
-  const baseDir = makeTmpBaseDir()
-  t.teardown(() => fs.rmSync(baseDir, { recursive: true, force: true }))
-
-  const session = createSession({ baseDir })
-  const builtins = createBuiltins(session)
-
-  await captureLogs(() => builtins.create.fn(['secretDNS', '--private']))
-  t.ok(session.get().descriptor.private, 'the created authority is actually marked private')
-
-  await builtins.publish.fn(['testrec', 'hyper', 'hyper://123abc'])
-  const output = await captureLogs(() => builtins.resolve.fn(['testrec']))
-  t.ok(output.includes('hyper://123abc'), 'the owner resolves their own record in a private authority normally')
-
-  await session.shutdown()
+test('shell create --private: the owner can publish/resolve at once; it has no public link, only invites', async (t) => {
+  const { session, builtins } = await shell(t)
+  const out = await captureLogs(() => builtins.create.fn(['secret', '--private']))
+  t.ok(out.includes('private'))
+  await session.get().dns.publish('blog', { type: 'A', value: '1.2.3.4' })
+  t.alike(await session.get().dns.resolve('blog'), [{ type: 'A', value: '1.2.3.4' }])
+  t.exception(() => builtins.link.fn(), /private/)
+  t.ok((await captureLogs(() => builtins.invite.fn([]))).startsWith('hg:'))
 })
 
-test('shell whoami: prints this identity\'s own public keys', async (t) => {
-  const baseDir = makeTmpBaseDir()
-  t.teardown(() => fs.rmSync(baseDir, { recursive: true, force: true }))
-
-  const session = createSession({ baseDir })
-  const builtins = createBuiltins(session)
-
+test('shell link and whoami: print the public link and the identity', async (t) => {
+  const { session, builtins } = await shell(t)
   await session.create('testdns')
-  const current = session.get()
-
-  const output = await captureLogs(() => builtins.whoami.fn([]))
-  t.ok(output.includes(current.graph.key.toString('hex')), "includes this identity's own public key")
-  t.ok(output.includes(current.graph.identity.encryptionKeyPair.publicKey.toString('hex')), "includes this identity's own encryption public key")
-
-  await session.shutdown()
-})
-
-test('shell grant: refuses on a non-private authority with a clear error, not a crash', async (t) => {
-  const baseDir = makeTmpBaseDir()
-  t.teardown(() => fs.rmSync(baseDir, { recursive: true, force: true }))
-
-  const session = createSession({ baseDir })
-  const builtins = createBuiltins(session)
-
-  await session.create('publicdns')
-
-  await t.exception(
-    () => builtins.grant.fn(['a'.repeat(64), 'b'.repeat(64)]),
-    /not private/,
-    'a clear, explicit error - not a crash or a silent no-op'
-  )
-
-  await session.shutdown()
+  t.is(await captureLogs(() => builtins.link.fn()), session.get().link)
+  t.ok((await captureLogs(() => builtins.whoami.fn())).includes(session.get().hg.identity.publicKey))
+  t.ok((await captureLogs(() => builtins.status.fn())).includes('owner'))
 })

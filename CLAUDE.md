@@ -75,6 +75,9 @@ fallback — it's a silently-incompatible peer that rejects events signed by a c
 
 ## Known cleanup
 
+- Spec 001 (2026-11-17): HyperDNS runs on `hypergraph/next` (spaces); `network/topic.js` is gone with v1's
+  name-derived topics (constitution III's mention of it is history). Mapping and changes: `specs/001-port-to-next/plan.md`.
+
 - `network/HyperswarmNetwork.js` — **done** (deleted 2026-09-09; it was unreferenced, and
   DECISIONS.md's 2026-07-30 entry had already declared it removed).
 - The three narrative `docs/*.md` prose files and `docs/ARCHITECTURE.md` may describe

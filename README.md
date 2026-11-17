@@ -17,9 +17,9 @@ For example **"hyper://blog@bobsDNS"** would resolve the record named **"blog"**
 hyperDNS instance. See `docs/ADDRESSING.md` for the full grammar (including an optional trailing path, for
 addressing something more specific within whatever the resolved record points to).
 
-- DNS addresses are derived from their name so they are deterministic and immutable (so no need for a public record of DNS addresses)
+- an authority is reached by its link (its key); once held, by its name. Deriving it from the name alone needs a name directory (not built)
 - users can join and create hyperDNS instances, which replicates locally all their records
-- resolving an address from other instances you're not member of will only sparse-replicate the resolved records
+- resolving an address from an instance you're not member of joins it read-only (hypergraph holds big spaces newest part first)
 
 ### Goals
 
@@ -66,14 +66,23 @@ hyperdns:bobsDNS (online) > resolve blog
 ```
 
 Relaunching the shell and running `create bobsDNS` again resumes the same authority (same
-identity, same data) rather than creating a new one - state is persisted under `.hyperdns/` in
-the current directory. Run `help` inside the shell for the full command list, or `join
-<path-to-descriptor.json>` to join an authority someone else created (get their descriptor via
-their own shell's `descriptor` command).
+identity, same data, under `.hyperdns/`). Anyone else resolves from it with its link
+(`resolve blog@hg:...`, printed by `link`), which joins it read-only. Run `help` for every command;
+**see `docs/SHELL_GUIDE.md` for a full walkthrough.**
 
-**See `docs/SHELL_GUIDE.md` for a full walkthrough** - in particular, testing with two peers
-needs two separate shell processes (one shell only ever holds one "current" authority at a
-time), and `connect` can genuinely take a while with nobody else around to connect to.
+## Library
+
+`src/` runs on Node and Bare and requires nothing: hand it your `hypergraph/next` instance.
+
+```js
+const { createAuthority, resolveAddress } = require('hyperdns')
+const { dns, link } = await createAuthority('bobsDNS', { hg })   // a public space; link: hg:<key>
+await dns.publish('blog', { type: 'hyper', value: 'hg:...' })
+await resolveAddress(`blog@${link}`, { hg: someoneElsesHg })     // { records, path, authority }
+// errors: err.code UNKNOWN_AUTHORITY | AMBIGUOUS_AUTHORITY | UNKNOWN_NAME | UNAVAILABLE
+```
+
+Tests: `npm test` (Node), `npm run test:bare` (the library on Bare), `npm run test:network` (public DHT).
 
 ---
 

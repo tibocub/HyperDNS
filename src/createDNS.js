@@ -1,15 +1,8 @@
 const HyperDNS = require('./HyperDNS')
 
 function createDNS (opts = {}) {
-  if (!opts.graph) throw new Error('graph is required')
-  if (!opts.context) throw new Error('context is required')
-
-  return new HyperDNS({
-    graph: opts.graph,
-    context: opts.context,
-    trustedModerators: opts.trustedModerators || [],
-    scope: opts.scope || null
-  })
+  if (!opts.space) throw new Error('space is required')
+  return new HyperDNS({ space: opts.space })
 }
 
 module.exports = createDNS
