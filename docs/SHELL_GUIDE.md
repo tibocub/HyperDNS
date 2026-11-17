@@ -106,6 +106,41 @@ Right now, `resolve name@authority` only works if `authority` is the one current
 get a clear error otherwise) — resolving from an authority you haven't `join`ed yet isn't built
 yet (see `docs/NETWORKING.md`'s "Mode B: Query mode").
 
+## Private authorities
+
+`create <name> --private` creates a private authority instead of a normal (public) one. See
+`docs/PRIVACY.md` for the full design and its honest limitations - short version: reaching it
+at all requires the descriptor (its network topic isn't derivable from the name), and every
+record is encrypted, decryptable only by identities explicitly granted access.
+
+```
+hyperdns > create secretDNS --private
+created authority "secretDNS"
+  private: reaching this authority requires the descriptor ...
+hyperdns:secretDNS (offline) > publish blog hyper hyper://abc123
+hyperdns:secretDNS (offline) > resolve blog
+  hyper  hyper://abc123
+```
+
+The owner can already resolve their own records (auto-granted on creation). To let someone
+else in:
+
+```
+# them, in their own shell:
+hyperdns > whoami
+  identity:            <their pubkey>
+  encryption identity: <their encryption pubkey>
+
+# you, after they send you both of those:
+hyperdns:secretDNS (offline) > grant <their pubkey> <their encryption pubkey>
+granted <pubkey>... access to this authority's records
+```
+
+Until granted, a joined peer's `resolve` returns nothing for that authority's records - not
+because nothing replicated, but because the record's content is genuinely encrypted. Record
+*names* are still visible to anyone with the descriptor either way; see `docs/PRIVACY.md` for
+why that's a hard limit.
+
 ## `status` field reference
 
 ```

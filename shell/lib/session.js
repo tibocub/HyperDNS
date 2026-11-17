@@ -3,8 +3,9 @@ const fs = require('fs')
 const Corestore = require('corestore')
 const hypercoreCrypto = require('hypercore-crypto')
 const { Hypergraph } = require('hypergraph')
-const { createAuthority, joinAuthority, attachConnect } = require('../../src/authority')
+const { createAuthority, joinAuthority, attachConnect, attachGrantAccess } = require('../../src/authority')
 const createDNS = require('../../src/createDNS')
+const { deriveAuthorityTopic } = require('../../network/topic')
 
 
 function sanitizeName (name) {
@@ -161,18 +162,25 @@ function createSession (opts = {}) {
       const contextKey = existing.contexts[0].key
       await graph.openContext(contextKey, opts.contextOpts || { writeMode: 'open' })
 
-      const dns = createDNS({ graph, context: contextKey })
-      current = attachConnect(
+      const isPrivate = !!existing.private
+      if (isPrivate && existing.scopeBaseKey) await graph.openScopeBase(existing.scopeBaseKey)
+
+      const topic = isPrivate && existing.topic ? Buffer.from(existing.topic, 'hex') : deriveAuthorityTopic(name)
+
+      const dns = createDNS({ graph, context: contextKey, scope: isPrivate ? existing.scopeId : null })
+      let resumed = attachConnect(
         { graph, store, context: contextKey, dns, network: null, descriptor: existing },
-        { role: 'owner', name }
+        { role: 'owner', topic }
       )
-      current.name = name
-      current.dir = dir
-      current.resumed = true
+      if (isPrivate && existing.scopeId) resumed = attachGrantAccess(resumed, existing.scopeId)
+      resumed.name = name
+      resumed.dir = dir
+      resumed.resumed = true
+      current = resumed
       return current
     }
 
-    const result = await createAuthority(name, { store, contextOpts: opts.contextOpts, graphOpts: graphOptsForSeed(seed) })
+    const result = await createAuthority(name, { store, contextOpts: opts.contextOpts, private: !!opts.private, graphOpts: graphOptsForSeed(seed) })
     saveDescriptor(dir, result.descriptor)
     result.store = store
     result.name = name

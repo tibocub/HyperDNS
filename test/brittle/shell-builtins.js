@@ -101,3 +101,55 @@ test('shell resolve: a trailing path is accepted and surfaced, not treated as pa
 
   await session.shutdown()
 })
+
+test('shell create --private: bootstraps a private authority whose owner can publish/resolve immediately', async (t) => {
+  const baseDir = makeTmpBaseDir()
+  t.teardown(() => fs.rmSync(baseDir, { recursive: true, force: true }))
+
+  const session = createSession({ baseDir })
+  const builtins = createBuiltins(session)
+
+  await captureLogs(() => builtins.create.fn(['secretDNS', '--private']))
+  t.ok(session.get().descriptor.private, 'the created authority is actually marked private')
+
+  await builtins.publish.fn(['testrec', 'hyper', 'hyper://123abc'])
+  const output = await captureLogs(() => builtins.resolve.fn(['testrec']))
+  t.ok(output.includes('hyper://123abc'), 'the owner resolves their own record in a private authority normally')
+
+  await session.shutdown()
+})
+
+test('shell whoami: prints this identity\'s own public keys', async (t) => {
+  const baseDir = makeTmpBaseDir()
+  t.teardown(() => fs.rmSync(baseDir, { recursive: true, force: true }))
+
+  const session = createSession({ baseDir })
+  const builtins = createBuiltins(session)
+
+  await session.create('testdns')
+  const current = session.get()
+
+  const output = await captureLogs(() => builtins.whoami.fn([]))
+  t.ok(output.includes(current.graph.key.toString('hex')), "includes this identity's own public key")
+  t.ok(output.includes(current.graph.identity.encryptionKeyPair.publicKey.toString('hex')), "includes this identity's own encryption public key")
+
+  await session.shutdown()
+})
+
+test('shell grant: refuses on a non-private authority with a clear error, not a crash', async (t) => {
+  const baseDir = makeTmpBaseDir()
+  t.teardown(() => fs.rmSync(baseDir, { recursive: true, force: true }))
+
+  const session = createSession({ baseDir })
+  const builtins = createBuiltins(session)
+
+  await session.create('publicdns')
+
+  await t.exception(
+    () => builtins.grant.fn(['a'.repeat(64), 'b'.repeat(64)]),
+    /not private/,
+    'a clear, explicit error - not a crash or a silent no-op'
+  )
+
+  await session.shutdown()
+})

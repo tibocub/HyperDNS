@@ -17,6 +17,12 @@ async function publish (name, record, opts = {}) {
   // that graph instance holds.
 
   const domain = await graph.put({ type: 'domain' })
+  // Deliberately never encrypted: {name} here is entirely redundant with
+  // the name:<name> tag below, which can never be encrypted either (tag
+  // strings are the context view's own index keys - see docs/ADDRESSING.md
+  // and hypergraph's own docs/read-permission.md on what a scope can and
+  // can't hide). Encrypting this copy would protect nothing already visible
+  // via the tag.
   await graph.putContent(domain.id, JSON.stringify({ name }), 'application/json')
   await graph.tag(domain.id, `name:${name}`, { context })
 
@@ -27,7 +33,13 @@ async function publish (name, record, opts = {}) {
     value: record.value
   }
   if (record.ttl !== undefined) body.ttl = record.ttl
-  await graph.putContent(rec.id, JSON.stringify(body), 'application/json')
+  // opts.scope, when present, is a ScopeBase scope id (see src/authority.js
+  // - only set for a private authority). putContent() encrypts the whole
+  // body as one unit; resolve() needs no changes to handle this correctly -
+  // getContent() already returns { body: null } for a caller without the
+  // scope's current key, and resolve()'s existing parseJsonBody() already
+  // treats that the same as "no valid record body", silently excluding it.
+  await graph.putContent(rec.id, JSON.stringify(body), 'application/json', opts.scope ? { scope: opts.scope } : undefined)
 
   await graph.relate({
     from: domain.id,

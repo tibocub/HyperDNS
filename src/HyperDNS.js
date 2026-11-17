@@ -13,6 +13,12 @@ module.exports = class HyperDNS {
     this.graph = opts.graph
     this.context = opts.context
     this.trustedModerators = Array.isArray(opts.trustedModerators) ? opts.trustedModerators : []
+    // A ScopeBase scope id - only set for a private authority (see
+    // src/authority.js). resolve() never needs this passed in: getContent()
+    // transparently decrypts (or returns null) based on whether the calling
+    // identity already holds a grant, with no scope id required from the
+    // caller at read time.
+    this.scope = typeof opts.scope === 'string' ? opts.scope : null
   }
 
   async resolve (name, opts = {}) {
@@ -26,6 +32,7 @@ module.exports = class HyperDNS {
 
   async publish (name, record, opts = {}) {
     return publish(name, record, {
+      scope: this.scope,
       ...opts,
       graph: this.graph,
       context: this.context

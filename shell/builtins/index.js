@@ -56,18 +56,21 @@ function createBuiltins (session) {
       async fn (args) {
         const { positional, flags } = parseFlags(args)
         const name = positional[0]
-        if (!name) throw new Error('usage: create <name> [--closed]')
+        if (!name) throw new Error('usage: create <name> [--closed] [--private]')
 
         const contextOpts = flags.closed ? { writeMode: 'closed' } : undefined
-        const result = await session.create(name, { contextOpts })
+        const result = await session.create(name, { contextOpts, private: !!flags.private })
 
         console.log(result.resumed
           ? c.green(`resumed authority "${name}"`)
           : c.green(`created authority "${name}"`))
         console.log(c.dim(`  local data: ${result.dir}`))
+        if (result.descriptor.private && !result.resumed) {
+          console.log(c.dim('  private: reaching this authority requires the descriptor (its topic is not derivable from the name), and every record is encrypted - grant access to specific people with "grant <pubkey> <encryption-pubkey>"'))
+        }
         console.log(c.dim('  not connected yet - run "connect" to go online'))
       },
-      help: 'Create a new DNS authority (or resume one this shell already created): create <name> [--closed]'
+      help: 'Create a new DNS authority (or resume one this shell already created): create <name> [--closed] [--private]'
     },
 
     join: {
@@ -125,12 +128,39 @@ function createBuiltins (session) {
 
         console.log(`  authority:  ${current.name}`)
         console.log(`  role:       ${role}`)
+        console.log(`  private:    ${current.descriptor.private ? 'yes' : 'no'}`)
         console.log(`  identity:   ${myKey}`)
         console.log(`  context:    ${current.context}`)
         console.log(`  network:    ${current.network ? `online (${current.network.connections} connection(s))` : 'offline'}`)
         console.log(`  local data: ${current.dir}`)
       },
       help: 'Show the current authority\'s status'
+    },
+
+    whoami: {
+      fn () {
+        const current = session.requireCurrent()
+        console.log(`  identity:            ${current.graph.key.toString('hex')}`)
+        console.log(`  encryption identity: ${current.graph.identity.encryptionKeyPair.publicKey.toString('hex')}`)
+        console.log(c.dim('  share both of these with the owner of a private authority so they can "grant" you access'))
+      },
+      help: 'Show your own identity and encryption public keys, to give to someone granting you access to a private authority'
+    },
+
+    grant: {
+      async fn (args) {
+        const [pubkeyHex, encryptionPubkeyHex] = args
+        if (!pubkeyHex || !encryptionPubkeyHex) throw new Error('usage: grant <pubkey> <encryption-pubkey> (get both from the recipient\'s "whoami")')
+
+        const current = session.requireCurrent()
+        if (!current.descriptor.private || !current.grantAccess) {
+          throw new Error('the current authority is not private - there is nothing to grant access to (every record is already resolvable by anyone who can reach it)')
+        }
+
+        await current.grantAccess(pubkeyHex, encryptionPubkeyHex)
+        console.log(c.green(`granted ${pubkeyHex.slice(0, 12)}... access to this authority's records`))
+      },
+      help: 'Grant a specific person access to a private authority\'s records: grant <pubkey> <encryption-pubkey>'
     },
 
     descriptor: {

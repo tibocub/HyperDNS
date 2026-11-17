@@ -323,3 +323,26 @@ Local storage is now split into `.hyperdns/owned/<name>/` (authorities this iden
 - `resolve <name>` (bare name, unchanged) and `resolve <name@authority>` (matching the currently-loaded authority) both work now; `resolve <name@somewhere-else>` gives a clear, explicit error rather than a misleading empty result
 - A trailing path, if present, is surfaced to the user (not silently dropped) with an explicit note that HyperDNS itself doesn't interpret it
 - See `test/brittle/shell-builtins.js` (new): exercises the actual builtin functions directly (`createBuiltins()` is a plain factory, no readline/stdin piping needed), including a test proving the exact regression (a matching address resolves, not "no records found")
+
+---
+
+## 2026-08-09 — Implemented private authorities: topic secrecy + mandatory content encryption
+
+### Decision
+
+`createAuthority(name, { private: true })` bootstraps a private authority: a randomly-generated network topic (not derivable from the name) plus a `ScopeBase` scope that every published record's content is automatically encrypted under. `grantAccess(pubkeyHex, encryptionPubkeyHex)` lets the owner (or anyone with `scope.grant`) give a specific, already-identified peer the ability to decrypt.
+
+### Rationale
+
+- Settled on a two-layer model after research, not by default: (1) topic secrecy - a normal authority's topic is a deterministic hash of its public name, so "closed" was never actually private (anyone could still connect and, per the earlier `hypergraph-context-discovery` fix, discover its context); a private authority's topic is random instead, so reaching it at all requires the descriptor; (2) content encryption via `ScopeBase` as defense in depth, in case a descriptor leaks anyway
+- Confirmed directly, before implementing anything, that `resolve()` needed zero code changes: `getContent()` already returns `body: null` for a caller without the current scope key, and `resolve()`'s existing `parseJsonBody()` already treats a non-string body as "no valid record" - the exact behavior needed for a non-granted peer to see nothing was already there, just never exercised
+- Pushed back on (and the user agreed to correct) an initial framing that conflated encryption with cryptographic ownership proof - those are independent primitives; HyperDNS already has strong, signature-based ownership proof on every event (see the relation `from`-ownership and moderation-timestamp-forgery fixes earlier in this file), with zero dependency on encryption. Public/open authorities stay entirely unencrypted, matching hypergraph's own explicit guidance in `docs/read-permission.md` that encrypting open content provides no real security benefit
+- Explicitly scoped out invite-code sharing (`blind-pairing`, the primitive underneath `autopass`'s `createInvite()`/`pair()`) as separate, undesigned hypergraph-level work, rather than attempting it alongside everything else in one round. `grantAccess()` requires the recipient's public keys already known, exchanged out-of-band - a real, acknowledged limitation, not a silently-skipped one
+
+### Consequences
+
+- `src/authority.js`: `attachConnect()` now takes an explicit `topic` rather than deriving it internally (needed since a private authority's topic isn't name-derived); new `attachGrantAccess()`. `src/publish.js`/`src/HyperDNS.js`/`src/createDNS.js`: thread an optional `scope` through to `putContent()`
+- Non-private authorities are completely unaffected - `publish()`/`resolve()` behave exactly as before this feature existed (confirmed: all pre-existing tests still pass unchanged)
+- **Record names, authorship, and timestamps remain visible to anyone with the descriptor, granted or not** - this is a hard limit inherited directly from `ScopeBase` (documented in hypergraph's own `docs/read-permission.md`: only a content body is ever encrypted, never tag/entity metadata, since HyperDNS's own name lookup is tag-based and tag strings are the context view's own index keys). Written up in full, including why, in the new `docs/PRIVACY.md`
+- Shell: `create <name> --private`, `whoami` (prints this identity's own public keys, to hand to a granter), `grant <pubkey> <encryption-pubkey>`, `status` now shows `private: yes/no`. The resume-across-restart path in `shell/lib/session.js` needed its own fix too, since it bypasses `createAuthority()` entirely
+- See `test/brittle/authority-private.js` (new) for the core library behavior (random topic, owner resolves immediately, a joined-but-not-granted peer genuinely replicates the domain/name but cannot resolve the record value, `grantAccess()` fixes that) and `test/brittle/shell-builtins.js`'s new cases for the shell-level wiring

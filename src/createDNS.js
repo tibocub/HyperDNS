@@ -7,7 +7,8 @@ function createDNS (opts = {}) {
   return new HyperDNS({
     graph: opts.graph,
     context: opts.context,
-    trustedModerators: opts.trustedModerators || []
+    trustedModerators: opts.trustedModerators || [],
+    scope: opts.scope || null
   })
 }
 

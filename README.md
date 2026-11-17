@@ -86,5 +86,6 @@ time), and `connect` can genuinely take a while with nobody else around to conne
 - docs/NETWORKING.md
 - docs/ADDRESSING.md
 - docs/SHELL_GUIDE.md
+- docs/PRIVACY.md
 - DECISIONS.md
 - WORKFLOW.md
