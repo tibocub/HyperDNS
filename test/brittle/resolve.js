@@ -2,8 +2,7 @@ const test = require('brittle')
 const { open, eventually } = require('hypergraph/testing')
 const { createAuthority, joinAuthority, PUBLISH_PERMISSION } = require('../../src')
 
-// v1's trustedModerators option is gone: the space's own moderators decide
-// (moderateAction), and every member applies their decisions.
+// The space's own moderators decide (moderateAction); every member applies it.
 test('hyperdns: resolve is deterministic and supports multi-claim + moderation', async (t) => {
   const owner = await open(t)
   const bob = await open(t)

@@ -1,9 +1,19 @@
 const { RECORD_TYPE } = require('./schema')
 
-// Publishes a record into the authority space `opts.space`. The author is
-// always that hypergraph instance's own identity (no author option), and
-// only members whose role has dns.publish may: anyone else gets NOT_ALLOWED
-// from hypergraph, and every reader ignores such a record anyway.
+/**
+ * Publishes a record into an authority space, signed by the instance's own
+ * identity (there is no author option). Only roles with dns.publish may;
+ * hypergraph refuses anyone else (`NOT_ALLOWED`).
+ *
+ * @param {string} name
+ * @param {Object} record
+ * @param {string} record.type - DNS record type (`A`, `TXT`, `hyper`...), non-blank
+ * @param {string} record.value - non-blank
+ * @param {number} [record.ttl] - unsigned integer, stored only
+ * @param {Object} opts
+ * @param {Object} opts.space
+ * @returns {Promise<{ name: string, type: string, value: string, ttl?: number, id: string }>}
+ */
 async function publish (name, record, opts = {}) {
   if (!name || typeof name !== 'string') throw new Error('name is required')
   if (!record || typeof record !== 'object') throw new Error('record is required')

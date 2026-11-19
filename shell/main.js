@@ -1,8 +1,4 @@
-// HyperDNS's shell - forked from js-shell-kit (github.com/tibocub/js-shell-kit),
-// trimmed to just the REPL/readline/completion machinery and the
-// {name: {fn, help}} builtin pattern; program execution and the gnu-like
-// builtins (cd, ls, type, ...) are gone, replaced by HyperDNS's own commands
-// (see shell/builtins/index.js).
+// The REPL. Commands live in shell/builtins/index.js.
 const readline = require('readline')
 const c = require('ansi-colors')
 const { parse } = require('shell-quote')
@@ -193,11 +189,8 @@ async function main () {
   updatePrompt()
   rl.prompt()
 
-  // Serialized: readline fires 'line' for every buffered line as soon as
-  // it's available, without waiting for a previous async listener to
-  // finish - piped/pasted input arrives as one burst, so without this
-  // queue, multiple commands would start executing concurrently instead of
-  // one at a time in the order they were entered.
+  // Serialized: readline doesn't await async 'line' listeners, so pasted or
+  // piped lines would otherwise run concurrently and out of order.
   let queue = Promise.resolve()
 
   rl.on('line', (userInput) => {

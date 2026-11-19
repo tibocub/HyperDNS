@@ -8,13 +8,8 @@ const timeoutMs = 240000
 const brittleCmd = path.join(__dirname, '..', 'node_modules', 'brittle', 'cmd.js')
 const testDir = path.join(__dirname, '..', 'test', 'brittle')
 
-// Real-network tests (anything actually exercising Hyperswarm/DHT connectivity,
-// via graph.connectToSwarm()) are excluded from the default fast suite: they
-// use deliberately generous, real-world-calibrated timeouts by hypergraph's
-// own design (its connectToSwarm() can legitimately take minutes depending on
-// DHT conditions), which is fundamentally incompatible with a single fixed
-// ceiling meant to catch a genuinely hung/broken test run. Run them
-// separately via `npm run test:network` - see docs/NETWORKING.md.
+// Public-DHT tests can take minutes, too long for the hang guard above:
+// they run alone with `npm run test:network`.
 const NETWORK_TEST_FILES = new Set(['replication-hyperswarm.js'])
 
 const testFiles = fs.readdirSync(testDir)

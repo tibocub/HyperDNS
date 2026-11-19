@@ -4,8 +4,6 @@ const { createAuthority, joinAuthority, PUBLISH_PERMISSION } = require('../../sr
 
 // Only members holding dns.publish publish: the record type's put rule, so
 // every member's app refuses others' records and every reader ignores them.
-// v1's second test here (a record relate()-attached to someone else's
-// domain) is gone with the domain/record split: one record carries both.
 test('publishing needs dns.publish: refused before it is given, counted once it is', async (t) => {
   const owner = await open(t)
   const bob = await open(t)

@@ -15,15 +15,16 @@ function isAuthority (space) {
 }
 
 /**
- * Creates an authority: a space of `opts.hg` (a `hypergraph/next` instance,
- * the caller's) holding DNS records, owned by its identity.
+ * Creates an authority: a new space of `opts.hg` holding DNS records, owned
+ * by `hg`'s identity. Public by default: anyone with `link` reads it; only
+ * roles with dns.publish publish.
  *
- * Public by default: anyone with its link (`link`, the space's public link)
- * reads it without a decision; only members whose role has dns.publish
- * publish. `opts.private`: a private space instead (sealed records, members
- * let in by `space.createInvite()`), `link` null.
- *
- * @returns {Promise<{ space, dns, link: string|null }>}
+ * @param {string} name - human label, not unique
+ * @param {Object} opts
+ * @param {Object} opts.hg - the caller's `hypergraph/next` instance
+ * @param {boolean} [opts.private=false] - a private space instead: sealed
+ *   records, members let in by `space.createInvite()`, `link` null
+ * @returns {Promise<{ space: Object, dns: HyperDNS, link: string|null }>}
  */
 async function createAuthority (name, opts = {}) {
   if (!name || typeof name !== 'string') throw new Error('name is required')
@@ -35,12 +36,16 @@ async function createAuthority (name, opts = {}) {
 }
 
 /**
- * Joins an authority by its public link (read-only in effect: joining
- * writes nothing, and publishing needs dns.publish) or an invite link (a
- * private one, or a role). A link to an authority already held reuses it.
- * Errors are hypergraph's (`INVITE_INVALID`, `INVITE_USED_UP`...).
+ * Joins an authority by its public link (writes nothing; publishing still
+ * needs dns.publish) or an invite link. A link to an authority already held
+ * reuses it.
  *
- * @returns {Promise<{ space, dns }>}
+ * @param {string} link - `hg:...`
+ * @param {Object} opts
+ * @param {Object} opts.hg - the caller's `hypergraph/next` instance
+ * @param {number} [opts.timeout] - ms, passed to `hg.redeemInvite`
+ * @returns {Promise<{ space: Object, dns: HyperDNS }>}
+ * @throws {Error} hypergraph's (`INVITE_INVALID`, `INVITE_USED_UP`...)
  */
 async function joinAuthority (link, opts = {}) {
   if (!link || typeof link !== 'string') throw new Error('link is required')
@@ -56,10 +61,15 @@ function heldByLink (hg, link) {
 }
 
 /**
- * The authority `authority` names for `hg`: a link (joined if not held yet),
- * or the name of an authority it holds. Errors with a `code`:
- * UNKNOWN_AUTHORITY, AMBIGUOUS_AUTHORITY (two held authorities share the
- * name: use a link), UNAVAILABLE (nobody holding it answered in time).
+ * The authority space `authority` names for `hg`: a link (joined if not
+ * held yet; left again if it isn't an authority), or the name of a
+ * top-level authority `hg` holds.
+ *
+ * @param {Object} hg
+ * @param {string} authority - `hg:...` or a name
+ * @param {{ timeout?: number }} [opts] - ms to wait when joining
+ * @returns {Promise<Object>} the ready space
+ * @throws {Error} with `code` UNKNOWN_AUTHORITY, AMBIGUOUS_AUTHORITY or UNAVAILABLE
  */
 async function findAuthority (hg, authority, { timeout } = {}) {
   if (authority.startsWith(LINK_PREFIX)) {
@@ -71,8 +81,8 @@ async function findAuthority (hg, authority, { timeout } = {}) {
         joined = true
       } catch (err) {
         if (err.code !== 'INVITE_INVALID') throw err
-        // shortcut: hypergraph gives one code for both; its message tells
-        // "not public" apart, until it has a code of its own.
+        // shortcut: hypergraph has one code for "not public" and "unreachable";
+        // tell them apart by message until it has a code of its own.
         if (/isn't public|Not a hypergraph invite link/.test(err.message)) throw dnsError('UNKNOWN_AUTHORITY', `${authority} is not an authority you can read (ask its owner for an invite)`)
         throw dnsError('UNAVAILABLE', `Nobody holding ${authority} is online: try again later`)
       }

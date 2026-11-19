@@ -2,10 +2,6 @@ const test = require('brittle')
 const { tmpDir, bootstrap, eventually } = require('hypergraph/testing')
 const { createSession } = require('../../shell/lib/session')
 
-// v1's tests on identity seed files and on owned/joined folders colliding
-// are gone: one hypergraph instance keeps the identity and every authority,
-// by key, so neither can happen.
-
 async function session (t, baseDir = tmpDir(t)) {
   const s = createSession({ baseDir, hgOpts: { bootstrap: await bootstrap(t) } })
   t.teardown(() => s.shutdown(), { order: 0 })

@@ -1,11 +1,7 @@
 const c = require('ansi-colors')
 const { resolveAddress } = require('../../src/address')
 
-/**
- * Every command is `{ fn(args), help }` - `help` is the one-line description
- * shown by the `help` builtin, auto-generated from this object so a new
- * command only ever needs to be added here once.
- */
+/** Every command is `{ fn(args), help }`; the `help` command lists them from this object. */
 function createBuiltins (session) {
   function parseFlags (args) {
     const positional = []
@@ -194,7 +190,6 @@ function createBuiltins (session) {
 
         let records, path
         if (input.includes('@')) {
-          // any authority: one held here by name, or any by its link
           ({ records, path } = await resolveAddress(input, { hg: await session.instance() }))
         } else {
           records = await session.requireCurrent().dns.resolve(input)

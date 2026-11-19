@@ -21,5 +21,5 @@
   "devDependencies": {
     "brittle": "^3.0.0"
   },
-  "//": "src/ has zero runtime dependencies and requires nothing: the caller hands it a hypergraph/next instance (hg) and does the networking itself (hg.connectToSwarm()). hypergraph is a real dependency because the shell (bin/cli.js, shell/) opens its own instance; tests use hypergraph/testing. hypergraph is not on npm yet, so it is declared as file:../hypergraph - npm install links this repo to the sibling checkout (npm 12 also blocks git dependencies by default). The hypergraph checkout must sit next to this repo."
+  "//": "src/ has no runtime dependencies: the caller passes its own hypergraph/next instance and connects it. hypergraph is a dependency for the shell and tests; it is not on npm yet, so it links the sibling checkout (file:../hypergraph), which must sit next to this repo."
 }

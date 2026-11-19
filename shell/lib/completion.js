@@ -35,11 +35,7 @@ function uniqueSorted (arr) {
   return Array.from(new Set(arr)).sort((a, b) => a.localeCompare(b))
 }
 
-// Command-position completion matches against builtin names only (there's
-// no external/PATH program execution in this shell, unlike the original
-// js-shell-kit this is adapted from). Argument-position completion still
-// does filesystem path completion - useful for paths,
-// `create --dir <path>`, etc.
+// First word: command names. Later words: filesystem paths.
 function createCompleter ({ builtins, cwdProvider }) {
   return async function completer (line) {
     const { tokens, currentToken } = splitLine(line)
