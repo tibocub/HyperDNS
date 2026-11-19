@@ -1,4 +1,4 @@
-# HyperDNS Shell — Usage Guide
+# Shell guide
 
 ## Starting it
 
@@ -8,6 +8,22 @@ npm run shell
 
 One long-running process with a `hyperdns >` prompt. Type commands directly (`create`, `publish`, `resolve`...).
 `help` lists them all.
+
+## Commands
+
+| command | does |
+|---|---|
+| `create <name> [--private]` | create an authority, or resume one you already created with that name |
+| `join <link>` | join an authority by its public link or an invite link |
+| `use <name>` | make an authority you hold current |
+| `connect` / `disconnect` | go online / offline for every authority |
+| `publish <name> <type> <value> [--ttl <seconds>]` | publish a record on the current authority |
+| `resolve <name>` / `resolve <name>@<authority>[/path]` | resolve on the current authority / on any |
+| `link` | print the current authority's public link |
+| `invite [--role <role>]` | create a one-use invite link to the current authority |
+| `status` | show the current authority |
+| `whoami` | show your identity key |
+| `help`, `clear`, `exit` | |
 
 ## One identity, many authorities, one "current"
 
@@ -98,6 +114,5 @@ local data: <.hyperdns folder>
 
 ## Where things are stored
 
-`.hyperdns/hg/`: hypergraph's instance folder (identity, every authority). Gitignored, per machine. Before spec 001
-it held `owned/` and `joined/` folders with descriptors and identity seeds; those are not read any more (D2: no
-migration).
+`.hyperdns/hg/` in the folder you started the shell from: hypergraph's instance folder (identity and every
+authority). Gitignored, one per machine. Older `owned/` and `joined/` folders there are ignored.

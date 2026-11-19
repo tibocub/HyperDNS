@@ -1,8 +1,5 @@
 # HyperDNS schema
 
-On hypergraph's new core (`hypergraph/next`), since spec 001. Before that (v1): `domain` and `record` entities,
-a `name:<name>` tag and a `has_record` edge, see `DECISIONS.md`.
-
 ## An authority is a space
 
 One space per authority (`hg.createSpace({ name, types })`): its members, roles, moderators and records. Its key

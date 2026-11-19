@@ -1,54 +1,47 @@
 # HyperDNS
 
-### Overview
+HyperDNS is a federated, peer-to-peer naming system built on [hypergraph](../hypergraph). It turns a
+human-readable name such as `blog@bobsDNS` into records (a hypergraph link, a Hyperdrive key, an IP address...)
+without a central registry.
 
-HyperDNS is a peer-to-peer, federated naming system built on [Hypergraph](https://github.com/tibocub/Hypergraph)
-and the [Holepunch](https://github.com/holepunchto) primitives (Hypercore, Hyperswarm, Hyperbee...). It allows
-applications to resolve human-readable names into addresses or hashes (hyperdrive key, IP address, hyperswarm
-topic...) without relying on centralized DNS authorities.
+## Concepts
 
-Central authority sucks, but making a community-based DNS breaks a bit the purpose of a DNS which is to make
-a resource easy to access. So joining manually a HyperDNS community to be able to reach its addresses doesn't sound optimal.
+- **Authority.** A hypergraph space that holds DNS records. It has an owner, members, roles and moderators. An
+  authority is a trust and moderation boundary, not a global namespace: two authorities can both have a `blog`.
+- **Address.** `name@authority`, mailbox first like an email address. `authority` is either the authority's link
+  (`hg:<key>`), which reaches any authority, or the name of one you already hold (`bobsDNS`). An optional
+  `hyperdns://` prefix and a trailing `/path` are allowed. HyperDNS never interprets the path. See
+  [docs/ADDRESSING.md](docs/ADDRESSING.md).
+- **Resolving.** A name resolves to every record of that name in one authority, deduplicated and sorted, so every
+  peer gets the same answer from the same data. Resolving by link joins a public authority read-only. Only members
+  whose role holds `dns.publish` can publish, and the authority's moderators can take records down.
+- **Private authorities.** `private: true` makes an authority a private space: sealed records, encrypted on disk,
+  members let in by invite link only. See [docs/PRIVACY.md](docs/PRIVACY.md).
 
-We can still manage to make a kinda universal source of truth without trusting everyone by making hyperDNS instances
-able to talk to each others like email servers or the fediverse. A hyperDNS address is composed of the record
-name + the DNS instance to resolve it from - the same order as an email address (mailbox first, domain second).
-For example **"hyper://blog@bobsDNS"** would resolve the record named **"blog"** within the **"bobsDNS"**
-hyperDNS instance. See `docs/ADDRESSING.md` for the full grammar (including an optional trailing path, for
-addressing something more specific within whatever the resolved record points to).
+Names are not globally unique, and a name alone does not find an authority: you need its link once. Nothing maps
+names to links yet.
 
-- an authority is reached by its link (its key); once held, by its name. Deriving it from the name alone needs a name directory (not built)
-- users can join and create hyperDNS instances, which replicates locally all their records
-- resolving an address from an instance you're not member of joins it read-only (hypergraph holds big spaces newest part first)
+## Library
 
-### Goals
+`src/` has no dependencies and runs on Node and Bare. You pass in your own `hypergraph/next` instance and connect
+it yourself (`hg.connectToSwarm()`); HyperDNS does no networking of its own.
 
-* Decentralized naming system
-* Federated moderation (no global authority)
-* Any address is resolvable even without being member of a DNS instance (if at least one member of the target instance is online to host the records)
-* Embeddable SDK for developers (give the holepunch ecosystem a hyperdns module)
-* Local daemon for system-wide resolution
-* [idea/later] Browser integration via extensions to support hyper:// protocol and resolve addresses directly from browser
+```js
+const { createAuthority, resolveAddress } = require('hyperdns')
 
-### Non-Goals
+const { dns, link } = await createAuthority('bobsDNS', { hg })     // public; link is 'hg:<key>'
+await dns.publish('blog', { type: 'hyper', value: 'hg:...' })
 
-* Perfect global consensus
-* Full DNS replacement
+const { records, path, authority } = await resolveAddress(`blog@${link}`, { hg: otherHg })
+// records: [{ type: 'hyper', value: 'hg:...' }]
+// errors carry err.code: UNKNOWN_AUTHORITY | AMBIGUOUS_AUTHORITY | UNKNOWN_NAME | UNAVAILABLE
+```
 
-### Core Concepts
+Every export and option: [docs/API.md](docs/API.md).
 
-* Identity = public key
-* Community = moderation boundary
-* Record = signed entry in append-only log
-* Resolution = trust-based aggregation
+## Shell
 
----
-
-## Usage
-
-HyperDNS ships a shell - a single long-running process you interact with via commands, rather
-than a short-lived CLI, since the whole point of the underlying P2P networking is to stay
-connected between commands instead of reconnecting on every invocation.
+The shell is a long-running process: the P2P connection stays up between commands.
 
 ```
 npm run shell
@@ -59,42 +52,47 @@ hyperdns > create bobsDNS
 created authority "bobsDNS"
 hyperdns:bobsDNS (offline) > connect
 connected
-hyperdns:bobsDNS (offline) > publish blog A 1.2.3.4
+hyperdns:bobsDNS (online) > publish blog A 1.2.3.4
 published blog -> A 1.2.3.4
 hyperdns:bobsDNS (online) > resolve blog
   A  1.2.3.4
 ```
 
-Relaunching the shell and running `create bobsDNS` again resumes the same authority (same
-identity, same data, under `.hyperdns/`). Anyone else resolves from it with its link
-(`resolve blog@hg:...`, printed by `link`), which joins it read-only. Run `help` for every command;
-**see `docs/SHELL_GUIDE.md` for a full walkthrough.**
+Data lives in `.hyperdns/` in the current folder; `create bobsDNS` again resumes the same authority. Anyone else
+resolves with `resolve blog@hg:...` (the link printed by `link`). `help` lists every command. Walkthrough:
+[docs/SHELL_GUIDE.md](docs/SHELL_GUIDE.md).
 
-## Library
+## Quick start
 
-`src/` runs on Node and Bare and requires nothing: hand it your `hypergraph/next` instance.
+Clone [hypergraph](../hypergraph) next to this repo (it is not on npm yet; `package.json` links
+`file:../hypergraph`), then:
 
-```js
-const { createAuthority, resolveAddress } = require('hyperdns')
-const { dns, link } = await createAuthority('bobsDNS', { hg })   // a public space; link: hg:<key>
-await dns.publish('blog', { type: 'hyper', value: 'hg:...' })
-await resolveAddress(`blog@${link}`, { hg: someoneElsesHg })     // { records, path, authority }
-// errors: err.code UNKNOWN_AUTHORITY | AMBIGUOUS_AUTHORITY | UNKNOWN_NAME | UNAVAILABLE
+```
+npm install
+npm run shell
 ```
 
-Tests: `npm test` (Node), `npm run test:bare` (the library on Bare), `npm run test:network` (public DHT).
+## Tests
 
----
+```
+npm test               # Node, all tests on a local DHT
+npm run test:bare      # the library's tests on Bare
+npm run test:network   # one test on the public DHT (slow, run alone)
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Docs
 
-- docs/ARCHITECTURE.md
-- docs/HYPERDNS_SCHEMA.md
-- docs/INVARIANTS.md
-- docs/REPLICATION.md
-- docs/NETWORKING.md
-- docs/ADDRESSING.md
-- docs/SHELL_GUIDE.md
-- docs/PRIVACY.md
-- DECISIONS.md
-- WORKFLOW.md
+- [docs/API.md](docs/API.md): library exports and options
+- [docs/ADDRESSING.md](docs/ADDRESSING.md): address grammar
+- [docs/HYPERDNS_SCHEMA.md](docs/HYPERDNS_SCHEMA.md): authorities, the record type, who may publish
+- [docs/NETWORKING.md](docs/NETWORKING.md): how authorities are found and replicated
+- [docs/REPLICATION.md](docs/REPLICATION.md): consistency guarantees
+- [docs/INVARIANTS.md](docs/INVARIANTS.md): rules resolution must keep
+- [docs/PRIVACY.md](docs/PRIVACY.md): private authorities
+- [docs/SHELL_GUIDE.md](docs/SHELL_GUIDE.md): the shell
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): code layout
+
+Records: `.specify/memory/constitution.md` (binding rules), `specs/` (feature specs), `DECISIONS.md` (decisions up
+to 2026-08), `WORKFLOW.md` (legacy).

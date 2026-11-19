@@ -1,8 +1,7 @@
 # Private Authorities (HyperDNS)
 
 `createAuthority(name, { hg, private: true })` (`src/authority.js`) makes the authority a **private space** of
-hypergraph's new core. Since spec 001; v1's design (random topic, ScopeBase scope, `grantAccess(pubkey,
-encryptionKey)` exchanged by hand) is gone.
+`hypergraph/next`.
 
 ## What it gives
 
@@ -10,7 +9,7 @@ encryptionKey)` exchanged by hand) is gone.
   or the shell's `join`); a member able to let people in must be online. It has no public link.
 - **Sealed records.** Record fields (name, type, value) are sealed with a key only members' devices receive; whoever
   relays or stores it without being let in reads nothing.
-- **Encrypted on disk** (hypergraph spec 022): its members, record types and timing are hidden from whoever stores
+- **Encrypted on disk**: its members, record types and timing are hidden from whoever stores
   it without being let in.
 - **Removal.** A removed member (`space.removeRole`) can't read what is published after; what came before stays
   readable to them.

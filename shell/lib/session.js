@@ -3,8 +3,6 @@ const { Hypergraph } = require('hypergraph/next')
 const { createAuthority, joinAuthority, findAuthority } = require('../../src/authority')
 const createDNS = require('../../src/createDNS')
 
-// Catches the most common real mistake: passing a path (or anything with
-// slashes/whitespace) where a short, human-chosen name was expected.
 function validateAuthorityName (name) {
   if (typeof name !== 'string' || name.trim().length === 0) {
     throw new Error('authority name is required')
@@ -19,11 +17,12 @@ function validateAuthorityName (name) {
 }
 
 /**
- * The shell's one hypergraph instance (identity and every authority it
- * created or joined, under `.hyperdns/hg/`) and its "current" authority.
- * Relaunching and running `create <name>` or `use <name>` again picks up
- * the same authority: the instance keeps identity and spaces on disk.
- * `opts.hgOpts`: passed to Hypergraph.open (tests: a local DHT).
+ * The shell's one hypergraph instance (identity and every authority, under
+ * `<baseDir>/hg/`) and its current authority.
+ *
+ * @param {Object} [opts]
+ * @param {string} [opts.baseDir] - default `./.hyperdns`
+ * @param {Object} [opts.hgOpts] - passed to Hypergraph.open (tests: a local DHT)
  */
 function createSession (opts = {}) {
   const baseDir = opts.baseDir || path.join(process.cwd(), '.hyperdns')

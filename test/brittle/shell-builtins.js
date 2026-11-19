@@ -42,7 +42,7 @@ test('shell resolve: a full name@authority address resolves (regression: it was 
 })
 
 test('shell resolve: name@authority reaches another held authority than the current one; an unknown one errors clearly', async (t) => {
-  // v1 refused any authority but the current one; now any held one (or link) resolves
+  // any held authority (or link) resolves, not only the current one
   const { session, builtins } = await shell(t)
   await session.create('other')
   await session.get().dns.publish('rec', { type: 'A', value: '9.9.9.9' })

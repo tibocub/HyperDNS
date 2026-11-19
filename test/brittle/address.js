@@ -19,10 +19,7 @@ test('parseAddress accepts an optional hyperdns:// scheme prefix', async (t) => 
 })
 
 test('parseAddress carries a trailing path through untouched, without ever interpreting it', async (t) => {
-  // The path is deliberately opaque - it exists to let hypergraph's own
-  // entity addressing (type/author/seq) and an app's own dynamic routing
-  // (e.g. HyperBBS's own "list all posts" route) both use it validly,
-  // without HyperDNS imposing any structure of its own on it.
+  // the path is opaque: entity ids and app routes both go there
   t.alike(
     parseAddress('forum@my-dns/post/1a0e0f168ab42de514f92cb95bd640ac599c43af9efbde0a14c81faa16bb0fe8/8'),
     { name: 'forum', dns: 'my-dns', path: 'post/1a0e0f168ab42de514f92cb95bd640ac599c43af9efbde0a14c81faa16bb0fe8/8' },
@@ -44,10 +41,7 @@ test('parseAddress carries a trailing path through untouched, without ever inter
 test('parseAddress rejects whitespace inside name, and a path separator before the authority even starts', async (t) => {
   t.exception(() => parseAddress('fo/rum@my-dns'), 'Invalid address format')
   t.exception(() => parseAddress('fo rum@my-dns'), 'Invalid address format')
-  // A slash right after '@' always starts the path by definition (that's
-  // the whole grammar) - there's no way for the authority itself to
-  // "contain" a slash that would need rejecting; this is a legitimate
-  // parse, not an error.
+  // a slash always ends the authority, so this parses
   t.alike(parseAddress('forum@my/dns'), { name: 'forum', dns: 'my', path: 'dns' })
 })
 

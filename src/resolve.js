@@ -2,9 +2,17 @@ const { RECORD_TYPE } = require('./schema')
 
 const PAGE = 100
 
-// Every record named `name` in `space`, with whether the answer is complete
-// (`complete: false`: a record known to exist hasn't arrived yet).
-// `timeout` (ms) waits up to that while incomplete; none: answers at once.
+/**
+ * Every record named `name` in `opts.space`, and whether the answer is
+ * complete (`false`: a record known to exist hasn't arrived yet).
+ *
+ * @param {string} name
+ * @param {Object} opts
+ * @param {Object} opts.space
+ * @param {number} [opts.timeout] - ms to wait while incomplete; none: answer at once
+ * @returns {Promise<{ records: Array<{ type: string, value: string, ttl?: number }>, complete: boolean }>}
+ *   deduplicated by type and value, sorted by type then value
+ */
 async function lookup (name, opts = {}) {
   if (!name || typeof name !== 'string') throw new Error('name is required')
   if (!opts.space) throw new Error('opts.space is required')
@@ -29,14 +37,20 @@ async function lookup (name, opts = {}) {
     after = page.items[page.items.length - 1]
   }
 
-  // Deterministic output, whatever order records arrived or were written in
+  // every peer must give the same answer whatever order records arrived in
   records.sort((a, b) => a.type.localeCompare(b.type) || a.value.localeCompare(b.value))
   return { records, complete }
 }
 
-// Resolves `name` within the one authority space the caller gives: never
-// joins or reaches any other (constitution I). Who may publish and what
-// moderators took down are the space's own rules, applied by hypergraph.
+/**
+ * Resolves `name` within the one space given: never joins or reads any
+ * other (constitution I). Publish rights and moderation are the space's,
+ * applied by hypergraph.
+ *
+ * @param {string} name
+ * @param {{ space: Object, timeout?: number }} opts - see lookup()
+ * @returns {Promise<Array<{ type: string, value: string, ttl?: number }>>}
+ */
 async function resolve (name, opts = {}) {
   return (await lookup(name, opts)).records
 }

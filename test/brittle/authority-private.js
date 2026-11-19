@@ -2,9 +2,7 @@ const test = require('brittle')
 const { open, eventually, codeOf } = require('hypergraph/testing')
 const { createAuthority, joinAuthority, resolveAddress } = require('../../src')
 
-// Private authorities are the core's private spaces: sealed records, members
-// let in by invite links (v1's grantAccess(pubkey, encKey) is gone, D1).
-// v1's topic tests are gone too: the core meets on topics derived from keys.
+// Private authorities: sealed records, members let in by invite links.
 
 test('private authority: no public link, and the owner publishes and resolves normally', async (t) => {
   const hg = await open(t)

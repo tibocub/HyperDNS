@@ -1,5 +1,5 @@
-// An authority's one record type. `type` is a field name hypergraph keeps
-// for the record itself, so a DNS record's type is stored as `kind`.
+// An authority's one record type. Hypergraph reserves `type`, so a DNS
+// record's type is stored as `kind`.
 const RECORD_TYPE = 'hyperdns/record'
 const PUBLISH_PERMISSION = 'dns.publish'
 

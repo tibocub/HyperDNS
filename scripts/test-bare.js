@@ -1,6 +1,5 @@
-// The library's tests (src/, not the shell) on Bare, one file at a time:
-// HyperBrowser's engine runs HyperDNS there (spec 001 D5). Uses hypergraph's
-// own `bare` (the sibling checkout's devDependency), so this repo adds none.
+// The library's tests (not the shell's) on Bare, where HyperBrowser runs it.
+// Uses the hypergraph checkout's own `bare`, so this repo needs no copy.
 const { spawnSync } = require('child_process')
 const path = require('path')
 const fs = require('fs')
