@@ -4,9 +4,9 @@ HyperDNS operates on hypergraph's eventually consistent spaces (`hypergraph/next
 
 ## Authority scope
 
-- Resolution is scoped to a single DNS authority (instance) selected explicitly by the caller (e.g. `my-blog@myDNS` - see `docs/ADDRESSING.md`).
+- Resolution is scoped to a single DNS authority selected explicitly by the caller (e.g. `my-blog@myDNS` - see `docs/ADDRESSING.md`).
 - A HyperDNS authority is a hypergraph space, addressed by its key (link); see `docs/NETWORKING.md`.
-- Authorities MUST NOT be mixed during resolution unless explicitly federated/composed.
+- Authorities MUST NOT be mixed during resolution.
 
 ## Guarantees
 
@@ -26,4 +26,4 @@ HyperDNS operates on hypergraph's eventually consistent spaces (`hypergraph/next
 
 - No global ordering of records
 - No immediate consistency across peers
-- No global uniqueness of domain names
+- No global uniqueness of names
