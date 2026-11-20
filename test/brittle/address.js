@@ -120,3 +120,13 @@ test('resolveAddress refuses an authority name two held authorities share', asyn
   t.is(await codeOf(resolveAddress('blog@twin', { hg })), 'AMBIGUOUS_AUTHORITY')
 })
 
+
+test('resolveAddress timeout: 0 does not wait (regression: 0 was read as the 10 s default)', async (t) => {
+  const hg = await open(t)
+  const gone = await open(t)
+  const { link } = await createAuthority('goneDNS', { hg: gone })
+  await gone.close()
+  const start = Date.now()
+  t.is(await codeOf(resolveAddress(`blog@${link}`, { hg, timeout: 0 })), 'UNAVAILABLE')
+  t.ok(Date.now() - start < 5000, `answered in ${Date.now() - start} ms`)
+})

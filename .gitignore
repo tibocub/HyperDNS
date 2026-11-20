@@ -11,3 +11,4 @@ package-lock.json
 # generated on every /speckit-* invocation, not something to commit.
 __pycache__/
 *.pyc
+/dist/

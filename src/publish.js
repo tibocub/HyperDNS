@@ -6,15 +6,11 @@ const { RECORD_TYPE } = require('./schema')
  * hypergraph refuses anyone else (`NOT_ALLOWED`).
  *
  * @param {string} name
- * @param {Object} record
- * @param {string} record.type - DNS record type (`A`, `TXT`, `hyper`...), non-blank
- * @param {string} record.value - non-blank
- * @param {number} [record.ttl] - unsigned integer, stored only
- * @param {Object} opts
- * @param {Object} opts.space
- * @returns {Promise<{ name: string, type: string, value: string, ttl?: number, id: string }>}
+ * @param {import('./schema').DnsRecord} record - `type` and `value` non-blank
+ * @param {{ space: import('./schema').Space }} opts
+ * @returns {Promise<import('./schema').PublishedRecord>}
  */
-async function publish (name, record, opts = {}) {
+async function publish (name, record, opts = /** @type {{ space: import('./schema').Space }} */ ({})) {
   if (!name || typeof name !== 'string') throw new Error('name is required')
   if (!record || typeof record !== 'object') throw new Error('record is required')
   if (typeof record.type !== 'string' || !record.type.trim()) throw new Error('record.type is required')
@@ -23,6 +19,7 @@ async function publish (name, record, opts = {}) {
 
   const put = await opts.space.put(RECORD_TYPE, { name, kind: record.type, value: record.value, ttl: record.ttl })
 
+  /** @type {import('./schema').PublishedRecord} */
   const out = { name, type: record.type, value: record.value, id: put.id }
   if (record.ttl !== undefined) out.ttl = record.ttl
   return out

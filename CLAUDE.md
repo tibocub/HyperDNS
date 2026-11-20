@@ -13,6 +13,8 @@ keeps the P2P connection up between commands. Overview: `README.md`.
 
 - `resolve()` is deterministic and local, reads exactly the one space the caller gives, and never opens one itself.
 - Every feature or fix ships with a `brittle` regression test.
+- `npm run typecheck` (tsc strict over `bin/`, `scripts/`, `shell/`, `src/`; `jsconfig.json`) passes with no
+  error. Real `@typedef`s, hypergraph's own types where they come from it; each `any` or `@ts-expect-error` says why.
 
 New design reasoning goes in the feature's `specs/<NNN-name>/plan.md`. `DECISIONS.md` and `WORKFLOW.md` are records
 only (`WORKFLOW.md` is legacy and contradicts this file: this file wins).

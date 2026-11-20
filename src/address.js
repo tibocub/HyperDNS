@@ -47,19 +47,19 @@ function parseAddress (address) {
  * holds. `path` is returned unparsed.
  *
  * @param {string} address
- * @param {Object} opts
- * @param {Object} opts.hg - the caller's `hypergraph/next` instance
+ * @param {object} opts
+ * @param {import('./schema').Hypergraph} opts.hg - the caller's `hypergraph/next` instance
  * @param {number} [opts.timeout=10000] - ms to wait for the authority's
- *   holders (joining, records known but not arrived yet)
- * @returns {Promise<{ records: Array<{ type: string, value: string, ttl?: number }>, path: string|null, authority: string }>}
+ *   holders (joining, records known but not arrived yet); 0: don't wait
+ * @returns {Promise<{ records: import('./schema').DnsRecord[], path: string|null, authority: string }>}
  *   `authority`: the key of the space that answered
  * @throws {Error} with `code` UNKNOWN_AUTHORITY, AMBIGUOUS_AUTHORITY,
  *   UNKNOWN_NAME or UNAVAILABLE (nobody online holds what is needed)
  */
-async function resolveAddress (address, opts = {}) {
+async function resolveAddress (address, opts = /** @type {{ hg: import('./schema').Hypergraph, timeout?: number }} */ ({})) {
   const { name, dns, path } = parseAddress(address)
   if (!opts.hg) throw new Error('hg is required')
-  const timeout = opts.timeout || 10000
+  const timeout = opts.timeout ?? 10000
 
   const space = await findAuthority(opts.hg, dns, { timeout })
   const { records, complete } = await lookup(name, { space, timeout })

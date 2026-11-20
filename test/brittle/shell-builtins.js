@@ -80,3 +80,20 @@ test('shell link and whoami: print the public link and the identity', async (t) 
   t.ok((await captureLogs(() => builtins.whoami.fn())).includes(session.get().hg.identity.publicKey))
   t.ok((await captureLogs(() => builtins.status.fn())).includes('owner'))
 })
+
+test('shell publish --ttl: whole seconds only (regression: "--ttl abc" sent NaN, a bare "--ttl" published ttl 1)', async (t) => {
+  const { session, builtins } = await shell(t)
+  await session.create('testdns')
+  await t.exception(builtins.publish.fn(['a', 'A', '1.1.1.1', '--ttl', 'abc']), /--ttl/)
+  await t.exception(builtins.publish.fn(['a', 'A', '1.1.1.1', '--ttl']), /--ttl/)
+  await t.exception(builtins.publish.fn(['a', 'A', '1.1.1.1', '--ttl', '1.5']), /--ttl/)
+  t.alike(await session.get().dns.resolve('a'), [], 'nothing published')
+  await captureLogs(() => builtins.publish.fn(['a', 'A', '1.1.1.1', '--ttl', '0']))
+  t.alike(await session.get().dns.resolve('a'), [{ type: 'A', value: '1.1.1.1', ttl: 0 }])
+})
+
+test('shell invite --role with no role: a usage error (regression: it asked hypergraph for a role named "true")', async (t) => {
+  const { session, builtins } = await shell(t)
+  await session.create('testdns')
+  await t.exception(builtins.invite.fn(['--role']), /usage: invite/)
+})

@@ -17,7 +17,7 @@ Creates an authority: a new space of `hg`, owned by `hg`'s identity, with the `h
 
 Joins by a public link or an invite link. A link to a space `hg` already holds returns that space. Joining by
 public link writes nothing; publishing still needs `dns.publish`. `timeout` (ms) is passed to
-`hg.redeemInvite`. Errors are hypergraph's (`INVITE_INVALID`, `INVITE_USED_UP`...).
+`hg.redeemInvite` (its default when left out; `0` doesn't wait). Errors are hypergraph's (`INVITE_INVALID`, `INVITE_USED_UP`...).
 
 ## Names
 
@@ -51,7 +51,7 @@ Parses `[hyperdns://]name@authority[/path]` (see [ADDRESSING.md](ADDRESSING.md))
 Parses the address, finds the authority and resolves the name in it.
 
 - The authority is a link (joined if `hg` doesn't hold it yet) or the name of an authority `hg` holds.
-- `timeout` (ms, default `10000`): how long to wait for the authority's holders.
+- `timeout` (ms, default `10000`): how long to wait for the authority's holders. `0` doesn't wait.
 - `authority` in the result is the key of the space that answered; `path` is returned unparsed.
 
 Errors carry `err.code`:
@@ -69,6 +69,12 @@ Errors carry `err.code`:
 
 A `HyperDNS` bound to one space, with `resolve(name, opts)` and `publish(name, record, opts)`: the functions above
 with `space` filled in. `createDNS` is the same as `new HyperDNS`.
+
+## Types
+
+`require('hyperdns')` is typed (see the README's Types section). Besides the functions' own types it exports
+`DnsRecord` (`{ type, value, ttl? }`), `PublishedRecord` (a `DnsRecord` with `name` and `id`), `DnsError` (an
+`Error` with `code`), and `Space` and `Hypergraph`, hypergraph's own types.
 
 ## Constants
 

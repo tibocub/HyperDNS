@@ -14,17 +14,45 @@ const completer = createCompleter({
   cwdProvider: () => process.cwd()
 })
 
-const rl = readline.createInterface({
+/**
+ * readline's undocumented internals the tab menu drives; Node's own REPL uses them too.
+ * @typedef {Omit<readline.Interface, 'line' | 'cursor'> & {
+ *   line: string,
+ *   cursor: number,
+ *   output: NodeJS.WriteStream,
+ *   _prompt?: string,
+ *   _refreshLine (): void,
+ *   _ttyWrite (s: string, key: readline.Key | undefined): void
+ * }} TtyInterface
+ */
+
+const rl = /** @type {TtyInterface} */ (/** @type {unknown} */ (readline.createInterface({
   input: process.stdin,
   output: process.stdout
-})
+})))
 
+/**
+ * The tab menu while it is open: the matches for the word at `replaceStart`, `index` the chosen one.
+ * @typedef {object} TabState
+ * @property {boolean} active
+ * @property {string} baseLine
+ * @property {number} baseCursor
+ * @property {number} replaceStart
+ * @property {string} word
+ * @property {string[]} matches
+ * @property {number} index
+ * @property {number} menuLines
+ * @property {string} right - the line after the cursor
+ */
+
+/** @type {TabState | null} */
 let tabState = null
 
 function resetTabState () {
   tabState = null
 }
 
+/** @param {string} s */
 function visibleLen (s) {
   return s
     .replace(/\x1B\[[0-9;]*m/g, '')
@@ -41,7 +69,8 @@ function renderSuggestionMenu () {
   if (!tabState?.active) return
   clearSuggestionMenu()
 
-  const parts = tabState.matches.map((m, i) => (i === tabState.index ? c.inverse(m) : m))
+  const { matches, index } = tabState
+  const parts = matches.map((m, i) => (i === index ? c.inverse(m) : m))
   const menu = parts.join('  ')
 
   const columns = rl.output.columns || process.stdout.columns || 80
@@ -110,10 +139,12 @@ async function handleTab () {
 
   renderSuggestionMenu()
 
-  const chosen = tabState.matches[tabState.index]
-  const baseLeft = tabState.baseLine.slice(0, tabState.baseCursor)
-  const newLeft = baseLeft.slice(0, tabState.replaceStart) + chosen
-  const newLine = newLeft + tabState.right
+  // set just above when it wasn't open with these matches
+  const state = /** @type {TabState} */ (tabState)
+  const chosen = state.matches[state.index]
+  const baseLeft = state.baseLine.slice(0, state.baseCursor)
+  const newLeft = baseLeft.slice(0, state.replaceStart) + chosen
+  const newLine = newLeft + state.right
 
   rl._refreshLine()
   rl.line = newLine
@@ -122,6 +153,7 @@ async function handleTab () {
   renderSuggestionMenu()
 }
 
+/** @param {number} delta */
 function cycleTab (delta) {
   if (!tabState?.active) return
   tabState.index = (tabState.index + delta + tabState.matches.length) % tabState.matches.length
@@ -154,7 +186,7 @@ function closeTabMenu () {
 }
 
 const originalTtyWrite = rl._ttyWrite.bind(rl)
-rl._ttyWrite = (s, key) => {
+rl._ttyWrite = (/** @type {string} */ s, /** @type {readline.Key | undefined} */ key) => {
   if (key?.name === 'tab') {
     if (tabState?.active) {
       cycleTab(key.shift ? -1 : 1)
@@ -197,6 +229,7 @@ async function main () {
     queue = queue.then(() => processLine(userInput))
   })
 
+  /** @param {string} userInput */
   async function processLine (userInput) {
     const trimmed = userInput.trim()
     if (trimmed === '') {
@@ -219,7 +252,7 @@ async function main () {
       try {
         await builtins[cmd].fn(args)
       } catch (err) {
-        console.error(c.red(err?.message ?? String(err)))
+        console.error(c.red(/** @type {Error | undefined} */ (err)?.message ?? String(err)))
       }
     } else {
       console.log(c.red(`${cmd}: command not found (type "help" for a list of commands)`))

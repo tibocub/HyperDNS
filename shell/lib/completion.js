@@ -1,6 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 
+/** @param {string} line */
 function splitLine (line) {
   const m = line.match(/\S+\s*$/)
   const current = m ? m[0] : ''
@@ -14,6 +15,7 @@ function splitLine (line) {
   return { tokens, currentToken: hasTrailingSpace ? '' : trimmedCurrent }
 }
 
+/** @param {string} dirAbs */
 async function listDirEntries (dirAbs) {
   try {
     return await fs.promises.readdir(dirAbs)
@@ -22,6 +24,7 @@ async function listDirEntries (dirAbs) {
   }
 }
 
+/** @param {string} p */
 async function isDirectory (p) {
   try {
     const st = await fs.promises.lstat(p)
@@ -31,11 +34,16 @@ async function isDirectory (p) {
   }
 }
 
+/** @param {string[]} arr */
 function uniqueSorted (arr) {
   return Array.from(new Set(arr)).sort((a, b) => a.localeCompare(b))
 }
 
-// First word: command names. Later words: filesystem paths.
+/**
+ * First word: command names. Later words: filesystem paths.
+ * @param {{ builtins: import('../builtins').Builtins, cwdProvider: () => string }} opts
+ * @returns {(line: string) => Promise<[string[], string]>} the matches, and the word they replace
+ */
 function createCompleter ({ builtins, cwdProvider }) {
   return async function completer (line) {
     const { tokens, currentToken } = splitLine(line)
