@@ -3,7 +3,7 @@
 const RECORD_TYPE = 'hyperdns/record'
 const PUBLISH_PERMISSION = 'dns.publish'
 
-/** @type {NonNullable<import('hypergraph/next').OpenOptions['types']>} */
+/** @type {import('hypergraph/next').TypeDeclarations} */
 const TYPES = {
   [RECORD_TYPE]: {
     fields: { name: 'string', kind: 'string', value: 'string', ttl: 'uint' },
@@ -14,7 +14,7 @@ const TYPES = {
 
 /**
  * @typedef {import('hypergraph/next').Hypergraph} Hypergraph The caller's `hypergraph/next` instance.
- * @typedef {ReturnType<Hypergraph['space']>} Space A `hypergraph/next` space.
+ * @typedef {import('hypergraph/next').Space} Space A `hypergraph/next` space.
  * @typedef {Error & { code: string }} DnsError An error with a HyperDNS or hypergraph `code`.
  */
 
