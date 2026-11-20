@@ -37,3 +37,13 @@ test('createAuthority()/joinAuthority() validate their input', async (t) => {
   t.is(await codeOf(joinAuthority('hg:abc', {})), 'opts.hg is required')
   t.is(await codeOf(joinAuthority('', { hg })), 'link is required')
 })
+
+test('joinAuthority timeout: 0 does not wait (regression: 0 was read as hypergraph\'s 30 s default)', async (t) => {
+  const hg = await open(t)
+  const gone = await open(t)
+  const { link } = await createAuthority('goneDNS', { hg: gone })
+  await gone.close()
+  const start = Date.now()
+  t.is(await codeOf(joinAuthority(link, { hg, timeout: 0 })), 'INVITE_INVALID')
+  t.ok(Date.now() - start < 5000, `answered in ${Date.now() - start} ms`)
+})

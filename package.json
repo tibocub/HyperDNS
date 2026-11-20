@@ -3,6 +3,14 @@
   "version": "0.0.1",
   "private": true,
   "main": "src/index.js",
+  "types": "./dist/types/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "bin": {
     "hyperdns": "bin/cli.js"
   },
@@ -11,15 +19,20 @@
     "test": "node scripts/test-with-timeout.js",
     "test:network": "brittle test/brittle/replication-hyperswarm.js",
     "test:bare": "node scripts/test-bare.js",
-    "shell": "node bin/cli.js"
+    "shell": "node bin/cli.js",
+    "typecheck": "tsc -p jsconfig.json",
+    "types": "tsc -p jsconfig.json --noEmit false --declaration --emitDeclarationOnly --outDir dist/types",
+    "prepack": "npm run types"
   },
   "dependencies": {
+    "@types/node": "^26.6.6",
     "ansi-colors": "^4.1.3",
     "hypergraph": "file:../hypergraph",
     "shell-quote": "^1.12.0"
   },
   "devDependencies": {
-    "brittle": "^3.0.0"
+    "brittle": "^3.0.0",
+    "typescript": "~5.9"
   },
   "//": "src/ has no runtime dependencies: the caller passes its own hypergraph/next instance and connects it. hypergraph is a dependency for the shell and tests; it is not on npm yet, so it links the sibling checkout (file:../hypergraph), which must sit next to this repo."
 }

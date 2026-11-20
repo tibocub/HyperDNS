@@ -82,6 +82,14 @@ npm run test:network   # one test on the public DHT (slow, run alone)
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Types
+
+`src/` (and the shell) is plain JavaScript typed with JSDoc and checked by TypeScript in strict mode
+(`npm run typecheck`), with nothing to compile. Editors read those types: completion, hover docs and errors as
+you type, in JavaScript too. TypeScript users get `.d.ts` files for `require('hyperdns')`, built by
+`npm run types` (into `dist/types/`, on `npm pack`); `Space` and `Hypergraph` are hypergraph's own types, so
+hypergraph's types must be built too (its `npm run types`). Node's types (`@types/node`) come as a dependency.
+
 ## Docs
 
 - [docs/API.md](docs/API.md): library exports and options

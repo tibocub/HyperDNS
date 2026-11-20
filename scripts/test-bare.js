@@ -6,7 +6,7 @@ const fs = require('fs')
 
 const bare = path.join(path.dirname(require.resolve('hypergraph/package.json')), 'node_modules', 'bare', 'bin', 'bare')
 const testDir = path.join(__dirname, '..', 'test', 'brittle')
-const SKIP = (name) => name.startsWith('shell-') || name === 'replication-hyperswarm.js'
+const SKIP = (/** @type {string} */ name) => name.startsWith('shell-') || name === 'replication-hyperswarm.js'
 
 let failed = 0
 for (const name of fs.readdirSync(testDir).filter((n) => n.endsWith('.js') && !SKIP(n))) {

@@ -3,13 +3,25 @@ const { TYPES, RECORD_TYPE } = require('./schema')
 
 const LINK_PREFIX = 'hg:'
 
+/**
+ * @typedef {import('./schema').Hypergraph} Hypergraph
+ * @typedef {import('./schema').Space} Space
+ * @typedef {import('./HyperDNS')} HyperDNS
+ */
+
+/**
+ * @param {string} code
+ * @param {string} message
+ * @returns {import('./schema').DnsError}
+ */
 function dnsError (code, message) {
-  const err = new Error(message)
-  err.code = code
-  return err
+  return Object.assign(new Error(message), { code })
 }
 
-// Whether a held, open space is a HyperDNS authority (has the record type).
+/**
+ * Whether a held, open space is a HyperDNS authority (has the record type).
+ * @param {Space} space
+ */
 function isAuthority (space) {
   try { return !!space.types()[RECORD_TYPE] } catch { return false }
 }
@@ -20,13 +32,13 @@ function isAuthority (space) {
  * roles with dns.publish publish.
  *
  * @param {string} name - human label, not unique
- * @param {Object} opts
- * @param {Object} opts.hg - the caller's `hypergraph/next` instance
+ * @param {object} opts
+ * @param {Hypergraph} opts.hg - the caller's `hypergraph/next` instance
  * @param {boolean} [opts.private=false] - a private space instead: sealed
  *   records, members let in by `space.createInvite()`, `link` null
- * @returns {Promise<{ space: Object, dns: HyperDNS, link: string|null }>}
+ * @returns {Promise<{ space: Space, dns: HyperDNS, link: string|null }>}
  */
-async function createAuthority (name, opts = {}) {
+async function createAuthority (name, opts = /** @type {{ hg: Hypergraph, private?: boolean }} */ ({})) {
   if (!name || typeof name !== 'string') throw new Error('name is required')
   if (!opts.hg) throw new Error('opts.hg is required')
 
@@ -41,20 +53,25 @@ async function createAuthority (name, opts = {}) {
  * reuses it.
  *
  * @param {string} link - `hg:...`
- * @param {Object} opts
- * @param {Object} opts.hg - the caller's `hypergraph/next` instance
+ * @param {object} opts
+ * @param {Hypergraph} opts.hg - the caller's `hypergraph/next` instance
  * @param {number} [opts.timeout] - ms, passed to `hg.redeemInvite`
- * @returns {Promise<{ space: Object, dns: HyperDNS }>}
+ * @returns {Promise<{ space: Space, dns: HyperDNS }>}
  * @throws {Error} hypergraph's (`INVITE_INVALID`, `INVITE_USED_UP`...)
  */
-async function joinAuthority (link, opts = {}) {
+async function joinAuthority (link, opts = /** @type {{ hg: Hypergraph, timeout?: number }} */ ({})) {
   if (!link || typeof link !== 'string') throw new Error('link is required')
   if (!opts.hg) throw new Error('opts.hg is required')
-  const space = heldByLink(opts.hg, link) || await opts.hg.redeemInvite(link, opts.timeout ? { timeout: opts.timeout } : undefined)
+  const space = heldByLink(opts.hg, link) || await opts.hg.redeemInvite(link, { timeout: opts.timeout })
   return { space, dns: createDNS({ space }) }
 }
 
-// A public link is the space's key in link form: the held space, or null.
+/**
+ * A public link is the space's key in link form: the held space, or null.
+ * @param {Hypergraph} hg
+ * @param {string} link
+ * @returns {Space | null}
+ */
 function heldByLink (hg, link) {
   if (!link.startsWith(LINK_PREFIX)) return null
   try { return hg.space(link.slice(LINK_PREFIX.length)) } catch { return null }
@@ -65,10 +82,10 @@ function heldByLink (hg, link) {
  * held yet; left again if it isn't an authority), or the name of a
  * top-level authority `hg` holds.
  *
- * @param {Object} hg
+ * @param {Hypergraph} hg
  * @param {string} authority - `hg:...` or a name
  * @param {{ timeout?: number }} [opts] - ms to wait when joining
- * @returns {Promise<Object>} the ready space
+ * @returns {Promise<Space>} the ready space
  * @throws {Error} with `code` UNKNOWN_AUTHORITY, AMBIGUOUS_AUTHORITY or UNAVAILABLE
  */
 async function findAuthority (hg, authority, { timeout } = {}) {
@@ -79,7 +96,8 @@ async function findAuthority (hg, authority, { timeout } = {}) {
       try {
         space = await hg.redeemInvite(authority, { timeout })
         joined = true
-      } catch (err) {
+      } catch (e) {
+        const err = /** @type {import('./schema').DnsError} */ (e)
         if (err.code !== 'INVITE_INVALID') throw err
         // shortcut: hypergraph has one code for "not public" and "unreachable";
         // tell them apart by message until it has a code of its own.

@@ -1,3 +1,11 @@
+/**
+ * @typedef {import('./schema').DnsRecord} DnsRecord
+ * @typedef {import('./schema').PublishedRecord} PublishedRecord
+ * @typedef {import('./schema').DnsError} DnsError
+ * @typedef {import('./schema').Space} Space
+ * @typedef {import('./schema').Hypergraph} Hypergraph
+ */
+
 module.exports = {
   resolve: require('./resolve'),
   publish: require('./publish'),

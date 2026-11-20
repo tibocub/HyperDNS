@@ -1,10 +1,21 @@
 const c = require('ansi-colors')
 const { resolveAddress } = require('../../src/address')
 
-/** Every command is `{ fn(args), help }`; the `help` command lists them from this object. */
+/**
+ * @typedef {{ fn: (args: string[]) => void | Promise<void>, help: string }} Builtin
+ * @typedef {Record<string, Builtin>} Builtins
+ */
+
+/**
+ * Every command is `{ fn(args), help }`; the `help` command lists them from this object.
+ * @param {import('../lib/session').Session} session
+ * @returns {Builtins}
+ */
 function createBuiltins (session) {
+  /** @param {string[]} args */
   function parseFlags (args) {
     const positional = []
+    /** @type {Record<string, string | true>} */
     const flags = {}
     for (let i = 0; i < args.length; i++) {
       const arg = args[i]
@@ -24,6 +35,7 @@ function createBuiltins (session) {
     return { positional, flags }
   }
 
+  /** @type {Builtins} */
   const builtins = {
     exit: {
       fn () { process.exit(0) },
@@ -160,7 +172,9 @@ function createBuiltins (session) {
       async fn (args) {
         const { flags } = parseFlags(args)
         const current = session.requireCurrent()
-        const link = await current.space.createInvite(flags.role ? { role: flags.role } : {})
+        const role = flags.role
+        if (role === true) throw new Error('usage: invite [--role <role>]')
+        const link = await current.space.createInvite(role ? { role } : {})
         console.log(link)
         console.log(c.dim('  one use; the person runs "join <link>" (someone able to let them in must be online)'))
       },
@@ -174,8 +188,12 @@ function createBuiltins (session) {
         if (!name || !type || !value) throw new Error('usage: publish <name> <type> <value> [--ttl <seconds>]')
 
         const current = session.requireCurrent()
+        /** @type {import('../../src/schema').DnsRecord} */
         const record = { type, value }
-        if (flags.ttl) record.ttl = Number(flags.ttl)
+        if (flags.ttl !== undefined) {
+          if (typeof flags.ttl !== 'string' || !/^\d+$/.test(flags.ttl)) throw new Error('--ttl takes whole seconds: publish <name> <type> <value> [--ttl <seconds>]')
+          record.ttl = Number(flags.ttl)
+        }
 
         await current.dns.publish(name, record)
         console.log(c.green(`published ${name} -> ${type} ${value}`))

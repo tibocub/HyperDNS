@@ -17,7 +17,7 @@ One long-running process with a `hyperdns >` prompt. Type commands directly (`cr
 | `join <link>` | join an authority by its public link or an invite link |
 | `use <name>` | make an authority you hold current |
 | `connect` / `disconnect` | go online / offline for every authority |
-| `publish <name> <type> <value> [--ttl <seconds>]` | publish a record on the current authority |
+| `publish <name> <type> <value> [--ttl <seconds>]` | publish a record on the current authority (`--ttl`: whole seconds) |
 | `resolve <name>` / `resolve <name>@<authority>[/path]` | resolve on the current authority / on any |
 | `link` | print the current authority's public link |
 | `invite [--role <role>]` | create a one-use invite link to the current authority |
