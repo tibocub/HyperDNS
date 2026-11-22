@@ -21,18 +21,14 @@ only (`WORKFLOW.md` is legacy and contradicts this file: this file wins).
 
 ## hypergraph
 
-`package.json` links `file:../hypergraph`: the live sibling checkout at `E:\Code\P2P\hypergraph`, which must sit
+`package.json` links `file:../hypergraph`: the sibling checkout `../hypergraph`, which must sit
 next to this repo. `npm install` / `npm ci` are safe. hypergraph is alpha and breaks on purpose, so never test
 against a copy; on Windows never repair the link with `ln -s` (it silently copies). Read its source directly when
-debugging across the boundary. Ecosystem map: `E:\Code\P2P\hypergraph\ECOSYSTEM.md`.
+debugging across the boundary. Ecosystem map: `../hypergraph/ECOSYSTEM.md`.
 
 ## Tests
 
-Point temp data at a big disk first. On this machine:
-
-```
-TMP=E:\Code\P2P\.tmp\tmp TEMP=E:\Code\P2P\.tmp\tmp HG_TEST_TMP=E:\Code\P2P\.tmp\tmp npm test
-```
+Tests write to the system temp folder (`HG_TEST_TMP` to change it): `npm test`.
 
 - `npm test`: every test except the public-DHT one, on a local DHT, with a 240 s hang guard.
 - `npm run test:bare`: the library's tests (not the shell's) on Bare.
